@@ -75,7 +75,16 @@
       "gatekeeperAssess": false,
       "entitlements": "config/entitlements.mac.plist",
       "entitlementsInherit": "config/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "extraResources": [
+        {
+          "from": "radicle-bin/${os}-${arch}/",
+          "to": "radicle-bin",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -88,6 +97,15 @@
         "x-scheme-handler/ipfs",
         "x-scheme-handler/ipns",
         "x-scheme-handler/bzz"
+      ],
+      "extraResources": [
+        {
+          "from": "radicle-bin/${os}-${arch}/",
+          "to": "radicle-bin",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     },
     "win": {
@@ -117,13 +135,6 @@
       {
         "from": "ipfs-bin/${os}-${arch}/",
         "to": "ipfs-bin",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "radicle-bin/${os}-${arch}/",
-        "to": "radicle-bin",
         "filter": [
           "**/*"
         ]

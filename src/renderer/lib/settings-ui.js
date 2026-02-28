@@ -15,6 +15,8 @@ let enableRadicleIntegrationCheckbox = null;
 let startRadicleRow = null;
 let startRadicleAtLaunchCheckbox = null;
 let autoUpdateCheckbox = null;
+let experimentalSection = null;
+let isWindows = false;
 
 // Current theme mode setting
 let currentThemeMode = 'system';
@@ -78,8 +80,8 @@ const saveSettings = async () => {
     theme: themeModeSelect?.value || 'system',
     startBeeAtLaunch: startBeeAtLaunchCheckbox?.checked ?? true,
     startIpfsAtLaunch: startIpfsAtLaunchCheckbox?.checked ?? true,
-    enableRadicleIntegration: enableRadicleIntegrationCheckbox?.checked ?? false,
-    startRadicleAtLaunch: startRadicleAtLaunchCheckbox?.checked ?? false,
+    enableRadicleIntegration: isWindows ? false : (enableRadicleIntegrationCheckbox?.checked ?? false),
+    startRadicleAtLaunch: isWindows ? false : (startRadicleAtLaunchCheckbox?.checked ?? false),
     autoUpdate: autoUpdateCheckbox?.checked ?? true,
   };
 
@@ -105,7 +107,7 @@ const saveSettings = async () => {
   }
 };
 
-export const initSettings = () => {
+export const initSettings = async () => {
   // Initialize DOM elements
   settingsBtn = document.getElementById('settings-btn');
   settingsModal = document.getElementById('settings-modal');
@@ -117,6 +119,14 @@ export const initSettings = () => {
   startRadicleRow = document.getElementById('start-radicle-row');
   startRadicleAtLaunchCheckbox = document.getElementById('start-radicle-at-launch');
   autoUpdateCheckbox = document.getElementById('auto-update');
+  experimentalSection = document.getElementById('experimental-section');
+
+  // No official Radicle binaries for Windows yet — hide the section entirely
+  const platform = await electronAPI.getPlatform();
+  isWindows = platform === 'win32';
+  if (isWindows && experimentalSection) {
+    experimentalSection.style.display = 'none';
+  }
 
   // Auto-save on any setting change
   themeModeSelect?.addEventListener('change', saveSettings);

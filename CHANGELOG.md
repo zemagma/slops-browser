@@ -6,7 +6,7 @@ All notable changes to Freedom will be documented in this file.
 
 ### Added
 
-- Experimental support for Radicle (decentralized Git hosting):
+- Experimental support for Radicle (decentralized Git hosting) on macOS and Linux:
   - Enable or disable Radicle from Settings > Experimental
   - `rad://` URL handling across navigation and rewriting
   - Bundled Radicle node lifecycle management and packaging support
