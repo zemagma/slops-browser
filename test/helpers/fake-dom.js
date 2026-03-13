@@ -44,7 +44,7 @@ const getDataAttributeName = (selector) => {
   };
 };
 
-const matchesSelector = (element, selector) => {
+const matchesSingleSelector = (element, selector) => {
   if (selector.startsWith('.')) {
     return element.classList.contains(selector.slice(1));
   }
@@ -65,6 +65,14 @@ const matchesSelector = (element, selector) => {
   return false;
 };
 
+const matchesSelector = (element, selector) => {
+  return selector
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .some((part) => matchesSingleSelector(element, part));
+};
+
 class FakeElement {
   constructor(tagName = 'div', options = {}) {
     this.tagName = tagName.toUpperCase();
@@ -76,7 +84,7 @@ class FakeElement {
     this.attributes = {};
     this.disabled = options.disabled || false;
     this.draggable = false;
-    this.innerHTML = options.innerHTML || '';
+    this._innerHTML = options.innerHTML || '';
     this.textContent = options.textContent || '';
     this.value = options.value || '';
     this.src = options.src || '';
@@ -106,6 +114,26 @@ class FakeElement {
             .filter(Boolean)
         );
         this.classList = this._classes;
+      },
+    });
+
+    Object.defineProperty(this, 'innerHTML', {
+      get: () => this._innerHTML,
+      set: (value) => {
+        this._innerHTML = String(value);
+        if (value === '') {
+          this.children.forEach((child) => {
+            child.parentNode = null;
+          });
+          this.children = [];
+        }
+      },
+    });
+
+    Object.defineProperty(this, 'offsetWidth', {
+      get: () => this._rect.width,
+      set: (value) => {
+        this._rect.width = value;
       },
     });
   }
@@ -199,6 +227,19 @@ class FakeElement {
     return this.children.some((child) => child.contains(target));
   }
 
+  closest(selector) {
+    let current = this;
+
+    while (current) {
+      if (matchesSelector(current, selector)) {
+        return current;
+      }
+      current = current.parentNode;
+    }
+
+    return null;
+  }
+
   querySelector(selector) {
     for (const child of this.children) {
       if (matchesSelector(child, selector)) {
@@ -236,11 +277,19 @@ class FakeElement {
 
 const createElement = (tagName = 'div', options = {}) => new FakeElement(tagName, options);
 
-const createDocument = ({ elementsById = {}, createElementOverride } = {}) => {
+const createDocument = ({ elementsById = {}, createElementOverride, body } = {}) => {
   const documentHandlers = {};
+  const documentBody = body || createElement('body');
+
+  Object.values(elementsById).forEach((element) => {
+    if (element && !element.parentNode) {
+      documentBody.appendChild(element);
+    }
+  });
 
   return {
     handlers: documentHandlers,
+    body: documentBody,
     createElement: jest.fn((tagName) => {
       if (createElementOverride) {
         return createElementOverride(tagName);
@@ -248,6 +297,8 @@ const createDocument = ({ elementsById = {}, createElementOverride } = {}) => {
       return createElement(tagName);
     }),
     getElementById: jest.fn((id) => elementsById[id] || null),
+    querySelector: jest.fn((selector) => documentBody.querySelector(selector)),
+    querySelectorAll: jest.fn((selector) => documentBody.querySelectorAll(selector)),
     addEventListener: jest.fn((event, handler) => {
       documentHandlers[event] = handler;
     }),
