@@ -5,10 +5,10 @@ module.exports = {
   collectCoverageFrom: ['src/**/*.js', '!src/**/*.test.js', '!src/renderer/vendor/**'],
   coverageThreshold: {
     global: {
-      statements: 31,
-      branches: 26,
+      statements: 32,
+      branches: 27,
       functions: 27,
-      lines: 31,
+      lines: 32,
     },
   },
   transform: {
