@@ -11,6 +11,7 @@ let closeSettingsBtn = null;
 let themeModeSelect = null;
 let startBeeAtLaunchCheckbox = null;
 let startIpfsAtLaunchCheckbox = null;
+let enableBeeLightModeCheckbox = null;
 let enableRadicleIntegrationCheckbox = null;
 let startRadicleRow = null;
 let startRadicleAtLaunchCheckbox = null;
@@ -19,6 +20,7 @@ let autoUpdateCheckbox = null;
 
 // Current theme mode setting
 let currentThemeMode = 'system';
+let currentBeeNodeMode = 'ultraLight';
 let currentRadicleIntegrationEnabled = false;
 
 // Callback for when settings change (set by navigation module)
@@ -61,6 +63,7 @@ export const applyTheme = (mode) => {
 export const initTheme = async () => {
   const settings = await electronAPI.getSettings();
   currentThemeMode = settings?.theme || 'system';
+  currentBeeNodeMode = settings?.beeNodeMode === 'light' ? 'light' : 'ultraLight';
   currentRadicleIntegrationEnabled = settings?.enableRadicleIntegration === true;
   applyTheme(currentThemeMode);
 
@@ -72,11 +75,46 @@ export const initTheme = async () => {
   });
 };
 
+const applyBeeModeChange = async (nextBeeNodeMode) => {
+  if (!window.bee?.getStatus) return;
+
+  let registry = null;
+  try {
+    registry = await window.serviceRegistry?.getRegistry?.();
+  } catch {
+    // Fall back to restarting the bundled node if we can't inspect registry state.
+  }
+
+  if (registry?.bee?.mode === 'reused') {
+    pushDebug(
+      'Swarm light mode setting saved. Using an existing Swarm node, so the change only applies to bundled nodes.'
+    );
+    return;
+  }
+
+  try {
+    const { status } = await window.bee.getStatus();
+    if (status !== 'running' && status !== 'starting') {
+      return;
+    }
+
+    pushDebug(
+      `Restarting Swarm node to apply ${nextBeeNodeMode === 'light' ? 'light' : 'ultra-light'} mode`
+    );
+    await window.bee.stop();
+    await window.bee.start();
+  } catch (err) {
+    pushDebug(`Failed to restart Swarm node after mode change: ${err.message}`);
+  }
+};
+
 // Save current settings state
 const saveSettings = async () => {
+  const previousBeeNodeMode = currentBeeNodeMode;
   const wasRadicleIntegrationEnabled = currentRadicleIntegrationEnabled;
   const newSettings = {
     theme: themeModeSelect?.value || 'system',
+    beeNodeMode: enableBeeLightModeCheckbox?.checked ? 'light' : 'ultraLight',
     startBeeAtLaunch: startBeeAtLaunchCheckbox?.checked ?? true,
     startIpfsAtLaunch: startIpfsAtLaunchCheckbox?.checked ?? true,
     enableRadicleIntegration: enableRadicleIntegrationCheckbox?.checked ?? false,
@@ -92,6 +130,7 @@ const saveSettings = async () => {
     }
     pushDebug('Settings saved');
     currentThemeMode = newSettings.theme;
+    currentBeeNodeMode = newSettings.beeNodeMode;
     currentRadicleIntegrationEnabled = newSettings.enableRadicleIntegration;
     applyTheme(currentThemeMode);
     window.dispatchEvent(
@@ -101,6 +140,9 @@ const saveSettings = async () => {
     );
     if (onSettingsChanged) {
       onSettingsChanged();
+    }
+    if (previousBeeNodeMode !== newSettings.beeNodeMode) {
+      await applyBeeModeChange(newSettings.beeNodeMode);
     }
   } else {
     pushDebug('Failed to save settings');
@@ -115,6 +157,7 @@ export const initSettings = () => {
   themeModeSelect = document.getElementById('theme-mode');
   startBeeAtLaunchCheckbox = document.getElementById('start-bee-at-launch');
   startIpfsAtLaunchCheckbox = document.getElementById('start-ipfs-at-launch');
+  enableBeeLightModeCheckbox = document.getElementById('enable-bee-light-mode');
   enableRadicleIntegrationCheckbox = document.getElementById('enable-radicle-integration');
   startRadicleRow = document.getElementById('start-radicle-row');
   startRadicleAtLaunchCheckbox = document.getElementById('start-radicle-at-launch');
@@ -125,6 +168,7 @@ export const initSettings = () => {
   themeModeSelect?.addEventListener('change', saveSettings);
   startBeeAtLaunchCheckbox?.addEventListener('change', saveSettings);
   startIpfsAtLaunchCheckbox?.addEventListener('change', saveSettings);
+  enableBeeLightModeCheckbox?.addEventListener('change', saveSettings);
   enableRadicleIntegrationCheckbox?.addEventListener('change', () => {
     updateRadicleSettingsVisibility();
     saveSettings();
@@ -132,6 +176,9 @@ export const initSettings = () => {
   startRadicleAtLaunchCheckbox?.addEventListener('change', saveSettings);
   enableIdentityWalletCheckbox?.addEventListener('change', saveSettings);
   autoUpdateCheckbox?.addEventListener('change', saveSettings);
+  window.addEventListener('settings:updated', (event) => {
+    currentBeeNodeMode = event.detail?.beeNodeMode === 'light' ? 'light' : 'ultraLight';
+  });
 
   settingsBtn?.addEventListener('click', async () => {
     setMenuOpen(false);
@@ -142,6 +189,9 @@ export const initSettings = () => {
         startBeeAtLaunchCheckbox.checked = settings.startBeeAtLaunch !== false;
       if (startIpfsAtLaunchCheckbox)
         startIpfsAtLaunchCheckbox.checked = settings.startIpfsAtLaunch !== false;
+      if (enableBeeLightModeCheckbox)
+        enableBeeLightModeCheckbox.checked = settings.beeNodeMode === 'light';
+      currentBeeNodeMode = settings?.beeNodeMode === 'light' ? 'light' : 'ultraLight';
       if (enableRadicleIntegrationCheckbox)
         enableRadicleIntegrationCheckbox.checked = settings.enableRadicleIntegration === true;
       currentRadicleIntegrationEnabled = settings.enableRadicleIntegration === true;

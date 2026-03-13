@@ -4,17 +4,23 @@
  * Node cards, status badges, Swarm notifications.
  */
 
-import { buildBeeUrl } from '../state.js';
+import { state, buildBeeUrl } from '../state.js';
 import { formatBalance, formatBytes } from './wallet-utils.js';
 
 // DOM references
 let swarmModeBadge;
 let swarmStatusBadge;
+let swarmBalanceXdaiEl;
+let swarmBalanceXbzzEl;
 let swarmStampsCount;
 let swarmStampsSummary;
+let swarmUpgradeCta;
 let walletNotification;
 let walletNotificationText;
 let walletNotificationAction;
+
+let desiredSwarmMode = 'ultraLight';
+let actualSwarmMode = null;
 
 // Node status tracking
 let nodeStatusUnsubscribers = [];
@@ -23,8 +29,11 @@ export function initNodeStatus() {
   // Node card elements
   swarmModeBadge = document.getElementById('swarm-mode-badge');
   swarmStatusBadge = document.getElementById('swarm-status-badge');
+  swarmBalanceXdaiEl = document.getElementById('swarm-balance-xdai');
+  swarmBalanceXbzzEl = document.getElementById('swarm-balance-xbzz');
   swarmStampsCount = document.getElementById('swarm-stamps-count');
   swarmStampsSummary = document.getElementById('swarm-stamps-summary');
+  swarmUpgradeCta = document.getElementById('swarm-upgrade-cta');
 
   // Notification elements
   walletNotification = document.getElementById('wallet-notification');
@@ -33,6 +42,9 @@ export function initNodeStatus() {
 
   // Setup node card collapse/expand
   setupNodeCards();
+
+  syncDesiredSwarmMode();
+  window.addEventListener('settings:updated', handleSettingsUpdated);
 
   // Subscribe to node status updates
   subscribeToNodeStatus();
@@ -44,7 +56,7 @@ export function initNodeStatus() {
 
 function setupNodeCards() {
   // Add click listeners to all node card headers
-  document.querySelectorAll('.node-card-header').forEach(header => {
+  document.querySelectorAll('.node-card-header').forEach((header) => {
     header.addEventListener('click', () => {
       const nodeName = header.dataset.node;
       toggleNodeCard(nodeName);
@@ -83,10 +95,111 @@ function toggleNodeCard(nodeName) {
   }
 }
 
-function handleUpgradeNode() {
-  // TODO: Implement upgrade flow
-  console.log('[WalletUI] Upgrade to light node - coming soon');
-  alert('Upgrade to Light Node - coming soon');
+function formatSwarmMode(mode) {
+  switch (mode) {
+    case 'full':
+      return 'Full';
+    case 'light':
+      return 'Light';
+    case 'ultraLight':
+      return 'Ultra-light';
+    default:
+      return '--';
+  }
+}
+
+function getDisplayedSwarmMode() {
+  if (actualSwarmMode) {
+    return actualSwarmMode;
+  }
+
+  if (state.registry?.bee?.mode !== 'reused') {
+    return desiredSwarmMode;
+  }
+
+  return null;
+}
+
+function updateSwarmModeUi() {
+  if (swarmModeBadge) {
+    swarmModeBadge.textContent = formatSwarmMode(getDisplayedSwarmMode());
+  }
+
+  if (swarmUpgradeCta) {
+    const displayMode = getDisplayedSwarmMode();
+    swarmUpgradeCta.classList.toggle('hidden', displayMode === 'light' || displayMode === 'full');
+  }
+}
+
+async function syncDesiredSwarmMode() {
+  try {
+    const settings = await window.electronAPI?.getSettings?.();
+    desiredSwarmMode = settings?.beeNodeMode === 'light' ? 'light' : 'ultraLight';
+  } catch {
+    desiredSwarmMode = 'ultraLight';
+  }
+
+  updateSwarmModeUi();
+}
+
+function handleSettingsUpdated(event) {
+  desiredSwarmMode = event.detail?.beeNodeMode === 'light' ? 'light' : 'ultraLight';
+  if (state.currentBeeStatus !== 'running' || state.registry?.bee?.mode !== 'reused') {
+    updateSwarmModeUi();
+  }
+}
+
+async function restartBundledBeeForModeChange() {
+  await window.bee?.stop?.();
+  await window.bee?.start?.();
+}
+
+async function updateBeeModeSetting(nextMode) {
+  const settings = await window.electronAPI.getSettings();
+  const nextSettings = { ...settings, beeNodeMode: nextMode };
+  const success = await window.electronAPI.saveSettings(nextSettings);
+
+  if (!success) {
+    throw new Error('Failed to save Swarm node mode');
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('settings:updated', {
+      detail: nextSettings,
+    })
+  );
+}
+
+async function handleUpgradeNode() {
+  try {
+    if (state.registry?.bee?.mode === 'reused') {
+      alert(
+        'Freedom is using an existing Swarm node. Switch that node to light mode outside Freedom to enable uploads and publishing.'
+      );
+      return;
+    }
+
+    if (desiredSwarmMode === 'light') {
+      updateSwarmModeUi();
+      return;
+    }
+
+    const shouldUpgrade = window.confirm(
+      'Switch the Swarm node to light mode? Freedom will restart the bundled node so it can publish content.'
+    );
+    if (!shouldUpgrade) {
+      return;
+    }
+
+    await updateBeeModeSetting('light');
+
+    if (state.currentBeeStatus === 'running' || state.currentBeeStatus === 'starting') {
+      await restartBundledBeeForModeChange();
+    }
+  } catch (err) {
+    console.error('[WalletUI] Failed to upgrade Swarm node:', err);
+    alert(err.message || 'Failed to switch Swarm node to light mode');
+  }
 }
 
 // ============================================
@@ -95,7 +208,7 @@ function handleUpgradeNode() {
 
 function subscribeToNodeStatus() {
   // Clean up any existing subscriptions
-  nodeStatusUnsubscribers.forEach(unsub => unsub?.());
+  nodeStatusUnsubscribers.forEach((unsub) => unsub?.());
   nodeStatusUnsubscribers = [];
 
   // Subscribe to Swarm/Bee status
@@ -147,44 +260,35 @@ async function fetchInitialNodeStatus() {
   }
 }
 
-function updateSwarmStatus(status, error) {
+function getStatusBadgeState(status) {
+  switch (status) {
+    case 'running':
+      return { text: 'Running', value: 'running' };
+    case 'starting':
+      return { text: 'Starting', value: 'starting' };
+    case 'stopping':
+      return { text: 'Stopping', value: 'starting' };
+    case 'error':
+      return { text: 'Error', value: 'error' };
+    case 'stopped':
+    default:
+      return { text: 'Stopped', value: 'stopped' };
+  }
+}
+
+function updateSwarmStatus(status, _error) {
   if (swarmStatusBadge) {
-    let statusText = 'Stopped';
-    let statusValue = 'stopped';
-
-    switch (status) {
-      case 'running':
-        statusText = 'Running';
-        statusValue = 'running';
-        break;
-      case 'starting':
-        statusText = 'Starting';
-        statusValue = 'starting';
-        break;
-      case 'stopping':
-        statusText = 'Stopping';
-        statusValue = 'starting';
-        break;
-      case 'error':
-        statusText = 'Error';
-        statusValue = 'error';
-        break;
-      case 'stopped':
-      default:
-        statusText = 'Stopped';
-        statusValue = 'stopped';
-        break;
-    }
-
-    swarmStatusBadge.textContent = statusText;
-    swarmStatusBadge.dataset.status = statusValue;
+    const badgeState = getStatusBadgeState(status);
+    swarmStatusBadge.textContent = badgeState.text;
+    swarmStatusBadge.dataset.status = badgeState.value;
   }
 
   if (status === 'running') {
     fetchSwarmMode();
     hideNotification();
-  } else if (swarmModeBadge) {
-    swarmModeBadge.textContent = '--';
+  } else {
+    actualSwarmMode = null;
+    updateSwarmModeUi();
   }
 }
 
@@ -192,87 +296,36 @@ async function fetchSwarmMode() {
   if (!swarmModeBadge) return;
 
   try {
-    const response = await fetch(buildBeeUrl('/status'));
+    const response = await fetch(buildBeeUrl('/node'));
     if (response.ok) {
       const data = await response.json();
       if (data.beeMode) {
-        const mode = data.beeMode.charAt(0).toUpperCase() + data.beeMode.slice(1);
-        swarmModeBadge.textContent = mode;
+        actualSwarmMode = data.beeMode;
+        updateSwarmModeUi();
       }
     }
   } catch (err) {
     console.error('[WalletUI] Failed to fetch Swarm mode:', err);
-    swarmModeBadge.textContent = '--';
+    actualSwarmMode = null;
+    updateSwarmModeUi();
   }
 }
 
-function updateIpfsStatus(status, error) {
+function updateIpfsStatus(status, _error) {
   const badge = document.getElementById('ipfs-status-badge');
   if (badge) {
-    let statusText = 'Stopped';
-    let statusValue = 'stopped';
-
-    switch (status) {
-      case 'running':
-        statusText = 'Running';
-        statusValue = 'running';
-        break;
-      case 'starting':
-        statusText = 'Starting';
-        statusValue = 'starting';
-        break;
-      case 'stopping':
-        statusText = 'Stopping';
-        statusValue = 'starting';
-        break;
-      case 'error':
-        statusText = 'Error';
-        statusValue = 'error';
-        break;
-      case 'stopped':
-      default:
-        statusText = 'Stopped';
-        statusValue = 'stopped';
-        break;
-    }
-
-    badge.textContent = statusText;
-    badge.dataset.status = statusValue;
+    const badgeState = getStatusBadgeState(status);
+    badge.textContent = badgeState.text;
+    badge.dataset.status = badgeState.value;
   }
 }
 
-function updateRadicleStatus(status, error) {
+function updateRadicleStatus(status, _error) {
   const badge = document.getElementById('radicle-status-badge');
   if (badge) {
-    let statusText = 'Stopped';
-    let statusValue = 'stopped';
-
-    switch (status) {
-      case 'running':
-        statusText = 'Running';
-        statusValue = 'running';
-        break;
-      case 'starting':
-        statusText = 'Starting';
-        statusValue = 'starting';
-        break;
-      case 'stopping':
-        statusText = 'Stopping';
-        statusValue = 'starting';
-        break;
-      case 'error':
-        statusText = 'Error';
-        statusValue = 'error';
-        break;
-      case 'stopped':
-      default:
-        statusText = 'Stopped';
-        statusValue = 'stopped';
-        break;
-    }
-
-    badge.textContent = statusText;
-    badge.dataset.status = statusValue;
+    const badgeState = getStatusBadgeState(status);
+    badge.textContent = badgeState.text;
+    badge.dataset.status = badgeState.value;
   }
 }
 
@@ -317,10 +370,8 @@ function checkSwarmNotifications(status) {
   if (status.wallet?.xdai !== undefined) {
     const xdaiBalance = parseFloat(status.wallet.xdai);
     if (xdaiBalance < 0.01) {
-      showNotification(
-        'Swarm node needs xDAI for gas fees',
-        'Send xDAI',
-        () => handleSendToNode('xdai')
+      showNotification('Swarm node needs xDAI for gas fees', 'Send xDAI', () =>
+        handleSendToNode('xdai')
       );
       return;
     }
@@ -329,10 +380,8 @@ function checkSwarmNotifications(status) {
   if (status.wallet?.xbzz !== undefined) {
     const xbzzBalance = parseFloat(status.wallet.xbzz);
     if (xbzzBalance < 0.1) {
-      showNotification(
-        'Swarm node needs xBZZ for postage stamps',
-        'Send xBZZ',
-        () => handleSendToNode('xbzz')
+      showNotification('Swarm node needs xBZZ for postage stamps', 'Send xBZZ', () =>
+        handleSendToNode('xbzz')
       );
       return;
     }
@@ -341,12 +390,9 @@ function checkSwarmNotifications(status) {
   if (status.stamps !== undefined) {
     const stampCount = Array.isArray(status.stamps) ? status.stamps.length : 0;
     if (stampCount === 0 && status.wallet?.xbzz && parseFloat(status.wallet.xbzz) > 0) {
-      showNotification(
-        'No postage stamps available for uploads',
-        'Buy Stamps',
-        () => handleBuyStamps()
+      showNotification('No postage stamps available for uploads', 'Buy Stamps', () =>
+        handleBuyStamps()
       );
-      return;
     }
   }
 }
