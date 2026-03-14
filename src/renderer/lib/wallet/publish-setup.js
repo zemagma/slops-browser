@@ -167,10 +167,14 @@ async function evaluateSteps() {
   const chequebookAddr = chequebookAddrResult.data?.chequebookAddress;
   const chequebookDeployed = isChequebookDeployed(chequebookAddr);
 
-  // Balance check via existing wallet infrastructure (main process IPC)
+  // Balance checks via existing wallet infrastructure (main process IPC)
   let hasXdai = false;
-  let hasXbzzFromWallet = false;
+  let beeHasXbzz = false;
+  let mainWalletHasXbzz = false;
   const beeAddr = getBeeWalletAddress();
+  const mainAddr = walletState.fullAddresses.wallet;
+
+  // Bee wallet balances
   if (beeAddr && window.wallet?.getBalances) {
     try {
       const result = await window.wallet.getBalances(beeAddr);
@@ -178,15 +182,28 @@ async function evaluateSteps() {
         const xdaiRaw = parseFloat(result.balances[XDAI_TOKEN_KEY]?.formatted || '0');
         hasXdai = xdaiRaw > 0;
         const xbzzRaw = parseFloat(result.balances[XBZZ_TOKEN_KEY]?.formatted || '0');
-        hasXbzzFromWallet = xbzzRaw > 0;
+        beeHasXbzz = xbzzRaw > 0;
       }
     } catch {
       // Balance fetch failed — leave as false
     }
   }
 
+  // Main wallet xBZZ balance (to know if user already swapped)
+  if (!beeHasXbzz && mainAddr && mainAddr !== beeAddr && window.wallet?.getBalances) {
+    try {
+      const result = await window.wallet.getBalances(mainAddr);
+      if (result?.success && result.balances) {
+        const xbzzRaw = parseFloat(result.balances[XBZZ_TOKEN_KEY]?.formatted || '0');
+        mainWalletHasXbzz = xbzzRaw > 0;
+      }
+    } catch {
+      // Non-critical
+    }
+  }
+
   // Tier 2 + sync progress queries (run in parallel when available)
-  let hasXbzz = hasXbzzFromWallet;
+  let hasXbzz = beeHasXbzz;
   let hasUsableStamps = false;
   let stampsSynced = false;
   let syncProgress = null;
@@ -246,6 +263,7 @@ async function evaluateSteps() {
     chequebookDeployed,
     stampsSynced,
     hasXbzz,
+    mainWalletHasXbzz,
     hasUsableStamps,
     syncProgress,
   };
@@ -345,6 +363,12 @@ function renderSteps(steps) {
   setStepStatus(stepFundXbzz, step4Status);
   toggleEl(stepFundXbzzBtn, step4Status === 'active');
 
+  if (stepFundXbzzBtn && step4Status === 'active') {
+    stepFundXbzzBtn.textContent = steps.mainWalletHasXbzz
+      ? 'Send xBZZ to Node'
+      : 'Swap xDAI \u2192 xBZZ';
+  }
+
   // Step 5: Purchase stamps
   const step5Complete = steps.hasUsableStamps;
   const step5Active = step4Complete && !step5Complete;
@@ -419,11 +443,30 @@ async function handleSwitchToLightMode() {
 }
 
 function handleFundXbzz() {
+  // If main wallet already has xBZZ, send it to the Bee wallet
+  const mainXbzz = parseFloat(walletState.currentBalances[XBZZ_TOKEN_KEY]?.formatted || '0');
+  if (mainXbzz > 0) {
+    const recipient = getBeeWalletAddress();
+    if (!recipient) {
+      alert('Bee wallet address is not available yet.');
+      return;
+    }
+    closePublishSetup();
+    openSend({
+      recipient,
+      chainId: GNOSIS_CHAIN_ID,
+      tokenKey: XBZZ_TOKEN_KEY,
+      tokenSymbol: 'xBZZ',
+    });
+    return;
+  }
+
+  // Otherwise open CowSwap to swap xDAI → xBZZ
   const swapUrl = walletState.registeredTokens[XBZZ_TOKEN_KEY]?.swapUrl;
   if (swapUrl) {
     createTab(swapUrl);
   } else {
-    alert('xBZZ swap is not configured. Visit swap.cow.fi on Gnosis Chain to swap xDAI for xBZZ.');
+    alert('xBZZ swap is not configured.');
   }
 }
 
