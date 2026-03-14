@@ -9,8 +9,10 @@ import { state } from '../state.js';
 import { walletState, registerScreenHider } from './wallet-state.js';
 import { isChequebookDeployed } from './wallet-utils.js';
 import { openSend } from './send.js';
+import { openReceive } from './receive.js';
 import { normalizeSwarmMode } from './swarm-readiness.js';
 import { fetchBeeJson } from './bee-api.js';
+import { createTab } from '../tabs.js';
 
 const GNOSIS_CHAIN_ID = 100;
 const XDAI_TOKEN_KEY = '100:native';
@@ -285,6 +287,11 @@ function renderSteps(steps) {
   setStepStatus(stepFundXdai, step1Status);
   toggleEl(stepFundXdaiBtn, step1Status === 'active');
 
+  if (stepFundXdaiBtn && step1Status === 'active') {
+    const mainHasXdai = parseFloat(walletState.currentBalances[XDAI_TOKEN_KEY]?.formatted || '0') > 0;
+    stepFundXdaiBtn.textContent = mainHasXdai ? 'Send xDAI' : 'Get xDAI';
+  }
+
   if (stepFundXdaiMeta) {
     if (steps.beeWalletAddress) {
       stepFundXdaiMeta.textContent = steps.beeWalletAddress;
@@ -370,12 +377,13 @@ function handleFundXdai() {
     return;
   }
 
-  const tokenKey = XDAI_TOKEN_KEY;
-  const mainWalletBalance = walletState.currentBalances[tokenKey];
+  const mainWalletBalance = walletState.currentBalances[XDAI_TOKEN_KEY];
   const available = parseFloat(mainWalletBalance?.formatted || '0');
 
   if (available <= 0) {
-    alert('Your main wallet has no xDAI on Gnosis Chain to send to the Bee node yet.');
+    // No xDAI in main wallet — show receive screen so user can fund from exchange
+    closePublishSetup();
+    openReceive();
     return;
   }
 
@@ -383,7 +391,7 @@ function handleFundXdai() {
   openSend({
     recipient,
     chainId: GNOSIS_CHAIN_ID,
-    tokenKey,
+    tokenKey: XDAI_TOKEN_KEY,
     tokenSymbol: 'xDAI',
   });
 }
@@ -411,19 +419,12 @@ async function handleSwitchToLightMode() {
 }
 
 function handleFundXbzz() {
-  const recipient = getBeeWalletAddress();
-  if (!recipient) {
-    alert('Bee wallet address is not available yet.');
-    return;
+  const swapUrl = walletState.registeredTokens[XBZZ_TOKEN_KEY]?.swapUrl;
+  if (swapUrl) {
+    createTab(swapUrl);
+  } else {
+    alert('xBZZ swap is not configured. Visit swap.cow.fi on Gnosis Chain to swap xDAI for xBZZ.');
   }
-
-  closePublishSetup();
-  openSend({
-    recipient,
-    chainId: GNOSIS_CHAIN_ID,
-    tokenKey: XBZZ_TOKEN_KEY,
-    tokenSymbol: 'xBZZ',
-  });
 }
 
 function handleBuyStamps() {
