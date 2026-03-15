@@ -134,7 +134,8 @@ async function ensureStampsAvailable() {
 async function handlePublishFile() {
   try {
     const picked = await swarm.pickFileForPublish();
-    if (!picked?.success || !picked.path) return;
+    if (!picked?.success && picked?.error) { showError(picked.error); return; }
+    if (!picked?.path) return; // User cancelled
 
     if (!(await ensureStampsAvailable())) return;
 
@@ -161,7 +162,8 @@ async function handlePublishFile() {
 async function handlePublishFolder() {
   try {
     const picked = await swarm.pickDirectoryForPublish();
-    if (!picked?.success || !picked.path) return;
+    if (!picked?.success && picked?.error) { showError(picked.error); return; }
+    if (!picked?.path) return; // User cancelled
 
     if (!(await ensureStampsAvailable())) return;
 
