@@ -17,6 +17,11 @@ function isPositiveNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+function batchIdToHex(value, fallback = '') {
+  if (value && typeof value.toHex === 'function') return value.toHex();
+  return String(value || fallback);
+}
+
 /**
  * Normalize a bee-js PostageBatch to the Freedom batch model.
  * Uses public bee-js class methods (toBytes, toSeconds) rather than
@@ -107,7 +112,7 @@ async function buyStorage(sizeGB, durationDays) {
     { timeout: BUY_TIMEOUT_MS } // BeeRequestOptions — HTTP timeout
   );
 
-  const batchIdHex = typeof batchId?.toHex === 'function' ? batchId.toHex() : String(batchId);
+  const batchIdHex = batchIdToHex(batchId);
   log.info(`[StampService] Purchased batch ${batchIdHex} (${sizeGB} GB, ${durationDays} days)`);
   return batchIdHex;
 }
@@ -126,6 +131,8 @@ async function getDurationExtensionCost(batchIdHex, additionalDays) {
 
 /**
  * Estimate cost to extend a batch's size.
+ * Note: bee-js treats size as ABSOLUTE (new total), not incremental.
+ * This is different from duration which is RELATIVE (additional time).
  */
 async function getSizeExtensionCost(batchIdHex, newSizeGB) {
   const bee = getBee();
@@ -146,13 +153,14 @@ async function extendStorageDuration(batchIdHex, additionalDays) {
     Duration.fromDays(additionalDays),
     { timeout: BUY_TIMEOUT_MS }
   );
-  const resultHex = result && typeof result.toHex === 'function' ? result.toHex() : String(result || batchIdHex);
+  const resultHex = batchIdToHex(result, batchIdHex);
   log.info(`[StampService] Extended duration of ${batchIdHex} by ${additionalDays} days`);
   return resultHex;
 }
 
 /**
  * Extend a batch's size.
+ * Note: newSizeGB is ABSOLUTE (new total), not incremental.
  */
 async function extendStorageSize(batchIdHex, newSizeGB) {
   const bee = getBee();
@@ -161,7 +169,7 @@ async function extendStorageSize(batchIdHex, newSizeGB) {
     Size.fromGigabytes(newSizeGB),
     { timeout: BUY_TIMEOUT_MS }
   );
-  const resultHex = result && typeof result.toHex === 'function' ? result.toHex() : String(result || batchIdHex);
+  const resultHex = batchIdToHex(result, batchIdHex);
   log.info(`[StampService] Extended size of ${batchIdHex} to ${newSizeGB} GB`);
   return resultHex;
 }
