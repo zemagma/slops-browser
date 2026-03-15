@@ -368,6 +368,7 @@ function updateSwarmSectionVisibility() {
 let currentCtaTarget = 'setup'; // 'setup' or 'storage'
 
 function handleSetupCtaClick() {
+  if (!currentCtaTarget) return;
   if (currentCtaTarget === 'storage') {
     openStampManager();
   } else {
