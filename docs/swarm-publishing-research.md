@@ -1032,12 +1032,35 @@ The following work from Milestones 0 and 1 has been completed on the `feature/sw
 - Address precedence: canonical identity-derived address preferred over Bee API cache
 - Node-down handling: checklist shows appropriate blocked state instead of incorrect funding prompts
 
-**Remaining for Milestone 1:**
+**Milestone 1a — bee-js and stamp purchase: DONE**
 
-- Add `@ethersphere/bee-js` as a project dependency
-- Implement stamp purchase flow (step 5 of the checklist)
-- Add stamp management UI for ongoing batch operations (view, extend, buy more)
-- Add a post-setup stamp management entry point from the node card
+- `@ethersphere/bee-js` installed as project dependency
+- `src/main/swarm/swarm-service.js`: lazy Bee client lifecycle, `selectBestBatch()` with 1.5x safety margin, shared `toHex()` helper
+- `src/main/swarm/stamp-service.js`: `getStamps` (normalized Freedom batch model), `getStorageCost`, `buyStorage` (with `waitForUsable: false`, xBZZ pre-check via exact PLUR values), extension operations (`getDurationExtensionCost`, `getSizeExtensionCost`, `extendStorageDuration`, `extendStorageSize`)
+- `src/renderer/lib/wallet/stamp-manager.js`: stamp manager sidebar sub-screen with:
+  - Batch list view (size, usage %, TTL with expiry warnings, batch ID, usable badge)
+  - Purchase form with 3 presets, live cost estimation, purchase state machine
+  - Extension forms inline within batch cards (duration: +7/30/90d presets; size: dynamic presets > current)
+  - Stale-estimation guards on all async cost fetches
+  - `isOpen` guard on all async callbacks to prevent state transitions on closed screen
+- Node card CTA: "Set Up Publishing" → "Publishing Setup" → "Manage Storage" (adapts to readiness state)
+- Checklist step 5 "Buy Stamps" opens the stamp manager
+- 27 stamp service tests, comprehensive IPC coverage
+
+**Milestone 2a — Publish service backend: DONE**
+
+- `src/main/swarm/publish-service.js`: `publishData` (raw bytes, `deferred: false`), `publishFile` (streaming via `createReadStream`, `deferred: true`), `publishDirectory` (async dir walk, auto `index.html` detection, `deferred: true`), `getUploadStatus` (normalized tag with progress/done)
+- Batch auto-selection: `selectBestBatch()` picks usable batch with enough remaining space and longest TTL
+- Normalized upload result: `{ reference, bzzUrl, tagUid, batchIdUsed }`
+- Normalized tag status: `{ tagUid, split, seen, stored, sent, synced, progress (0-100), done }`
+- IPC: `swarm:publish-data`, `swarm:publish-file`, `swarm:publish-directory`, `swarm:get-upload-status`
+- Preload: `window.swarmNode.publishData/File/Directory/getUploadStatus`
+- 13 publish service tests
+
+**Remaining for Milestone 2:**
+
+- Publish utility UI (WP2-B): sidebar sub-screen with file picker, folder picker, text input, progress display, results with bzz:// URLs
+- Publish history (WP2-C): persist recent publishes locally, show in UI
 
 ### bee-js Integration Plan
 
@@ -1067,19 +1090,21 @@ bee-js should run in the **main process only**, consistent with how Freedom hand
 
 #### bee-js integration scope
 
-Phase 1 (stamps):
+Phase 1 (stamps) — DONE:
 
-- `Bee` class instantiation in a new `src/main/swarm/swarm-service.js`
-- IPC handlers for stamp operations
-- Expose to renderer via preload API
+- `Bee` class instantiation in `src/main/swarm/swarm-service.js`
+- Stamp IPC handlers in `src/main/swarm/stamp-service.js` (read, estimate, buy, extend)
+- Shared `toHex()` and `selectBestBatch()` utilities
+- Exposed to renderer via preload as `window.swarmNode`
 
-Phase 2 (publishing):
+Phase 2 (publishing) — BACKEND DONE, UI REMAINING:
 
-- Upload operations (data, files, directories)
-- Tag tracking
-- Pinning
+- Upload operations in `src/main/swarm/publish-service.js` (data, file via stream, directory via async walk)
+- Tag tracking via `getUploadStatus` with normalized progress
+- Pinning enabled by default (`pin: true`)
+- Remaining: publish utility UI, publish history
 
-Phase 3 (feeds and provider):
+Phase 3 (feeds and provider) — NOT STARTED:
 
 - SOC and feed operations
 - Feed manifest creation
@@ -1309,24 +1334,40 @@ All tasks done. Light-mode config, settings, mode detection, and gated upgrade f
 - Buy additional batches
 - Batch expiry warnings
 
-#### Milestone 2: Publishing substrate — NOT STARTED
+#### Milestone 2: Publishing substrate — BACKEND DONE, UI REMAINING
 
 Goal: let Freedom upload content to Swarm through the main-process SwarmService.
 
-Depends on: Milestone 1a (bee-js integrated, Bee client available).
+**Done:**
 
-Tasks:
+- `publish-service.js` with upload IPC handlers (data, file, directory)
+- Streaming file uploads via `createReadStream` (memory-efficient for large files)
+- Async directory size estimation (non-blocking for large trees)
+- Auto `index.html` detection for website uploads
+- Tag-based progress tracking with normalized status (`progress`, `done`)
+- `pin: true` for all uploads; `deferred: false` for data, `deferred: true` for files/directories (with tags for progress)
+- Normalized result: `{ reference, bzzUrl, tagUid, batchIdUsed }`
+- Batch auto-selection via `selectBestBatch()` with 1.5x safety margin
+- IPC + preload exposure as `window.swarmNode.publishData/File/Directory/getUploadStatus`
+- 13 tests with mocked bee-js
 
-- Extend `swarm-service.js` with upload IPC handlers
-- Support upload types: raw data, single file, directory/website bundle
-- Tag-based progress tracking for large uploads
-- Default to `pin: true`, `deferred: false` for simple uploads
-- Return reference, `bzz://` URL, and tag ID
-- Persist a publish history locally
-- Add a minimal publish utility UI:
-  - Publish file (file picker)
-  - Publish folder/site (directory picker, auto-detect `index.html`)
-  - View recent publishes with refs and status
+**Remaining — WP2-B: Publish utility UI:**
+
+- New sidebar sub-screen accessible from node card when publish-ready
+- "Publish File" → Electron native file picker dialog → upload → show result with bzz:// URL
+- "Publish Folder" → native directory picker → upload with progress → show result
+- "Publish Text/Data" → textarea input → upload → show result
+- Progress display for deferred uploads (poll `getUploadStatus`)
+- Each result: clickable bzz:// URL that opens in a new tab, copy button
+- File picker uses `dialog.showOpenDialog` from main process — renderer never handles file contents
+
+**Remaining — WP2-C: Publish history:**
+
+- Persist recent publishes to a JSON file (similar to `balance-cache.js` pattern)
+- Each entry: `{ reference, bzzUrl, type, name, timestamp, tagUid, batchIdUsed, status }`
+- Status: `uploading`, `syncing`, `completed`, `failed`
+- IPC: `swarm:get-publish-history`, `swarm:clear-publish-history`
+- Show in the publish utility UI as a recent publishes list
 
 #### Milestone 3: `window.swarm` provider — NOT STARTED
 
@@ -1411,74 +1452,87 @@ After deploying a chequebook in light mode and observing `chequebookAddress: "0x
 - Should Freedom ever support full-node publishing for advanced users, or stay opinionated around light nodes?
 - Does `/chequebook/address` in ultra-light mode correctly reflect a previously-deployed chequebook? Likely yes based on statestore persistence, but not yet tested with a mode-switch roundtrip.
 
-### New questions from implementation
+### Resolved from implementation
 
-- What default stamp size/duration should Freedom suggest for first-time users? Proposed: 1 GB / 30 days, but this depends on typical use cases and cost at current storage prices.
-- Should stamp purchase be a sub-screen within the publish setup checklist, or a standalone stamp management screen that the checklist just opens?
-- How should Freedom handle batch expiry warnings? Notification, badge on the node card, or a scheduled background check?
+- ~~What default stamp size/duration should Freedom suggest?~~ **Resolved: 3 presets** — "Try it out" (1GB/7d), "Small project" (1GB/30d), "Standard" (5GB/30d). Default selection is "Small project".
+- ~~Should stamp purchase be in the checklist or a standalone screen?~~ **Resolved: standalone stamp manager** that the checklist opens. Same screen for first purchase and ongoing management.
+- ~~When the user uploads content, should Freedom auto-select the best batch?~~ **Resolved: auto best-fit in v1.** `selectBestBatch()` picks usable batch with enough remaining space (1.5x safety margin) and longest TTL. Optional explicit choice deferred to later.
+- ~~Should the first publish UI live in the sidebar, a new page, or both?~~ **Resolved: sidebar sub-screen** from the node card, consistent with "Freedom is the capability host" model.
+- ~~Should folder/site publishing happen only in the main process?~~ **Resolved: main process only.** Renderer sends file/directory path via IPC; main process reads from disk and uploads via bee-js. Renderer never handles file contents.
+
+### Still open from implementation
+
 - Should the stamp management UI show cost in xBZZ or also estimate in USD/EUR (via a price feed)?
-- When the user uploads content, should Freedom auto-select the best batch, or always let the user choose which batch to use?
 - Should `window.swarmNode` (internal renderer API) and `window.swarm` (page-facing provider) share the same IPC backend, or should the page-facing provider have its own permission-gated layer on top?
 - How should the `Bee` client instance handle Bee restarts? Should it detect connection loss and recreate, or rely on the service registry URL change?
+- How should Freedom handle batch expiry warnings long-term? Currently shows TTL warnings in the stamp manager (orange < 7 days, red < 1 day), but no proactive notifications when the stamp manager is closed.
 
 ## Branch-Specific TODOs
 
 ### DONE (completed on `feature/swarm-publishing`)
 
+Milestone 0 — Light-node enablement:
 - ~~Remove stdout-based `runtimeHint` infrastructure from `bee-manager.js`~~ — done
 - ~~Simplify `swarm-readiness.js` to pure state machine~~ — done
 - ~~Add gated upgrade flow with publish setup checklist~~ — done
 - ~~Context-aware funding actions (receive, send, CowSwap swap)~~ — done
 - ~~Node card CTA based on readiness state~~ — done
-- ~~Shared utilities (fetchBeeJson, isChequebookDeployed, ZERO_ADDRESS)~~ — done
+- ~~Shared utilities (fetchBeeJson, isChequebookDeployed, ZERO_ADDRESS, formatRawTokenBalance, toHex)~~ — done
 - ~~Address precedence and Bee-down handling~~ — done
 - ~~Protocol URL routing in createTab (ens://, bzz://, ipfs://)~~ — done
 
-### Next: Milestone 1a — bee-js integration and stamp purchase
+Milestone 1a — bee-js and stamp purchase:
+- ~~Install `@ethersphere/bee-js`~~ — done
+- ~~SwarmService with lazy Bee client, selectBestBatch, toHex~~ — done
+- ~~Stamp service: getStamps, getStorageCost, buyStorage~~ — done
+- ~~BatchId normalization to hex, waitForUsable: false, xBZZ pre-check~~ — done
+- ~~Stamp manager UI: purchase form with presets, cost estimation, state machine~~ — done
+- ~~Checklist step 5 opens stamp manager~~ — done
+- ~~Node card CTA switches to "Manage Storage" when publish-ready~~ — done
 
-Two slices:
+Milestone 1b — stamp management:
+- ~~Extension IPC: getDurationExtensionCost, getSizeExtensionCost, extendStorageDuration, extendStorageSize~~ — done
+- ~~Batch list view in stamp manager~~ — done
+- ~~Extension UI inline in batch cards (duration presets, dynamic size presets)~~ — done
+- ~~TTL expiry warnings (orange < 7 days, red < 1 day)~~ — done
+- ~~Buy Another Batch flow~~ — done
+- ~~Stale estimation guards, isOpen guards, status class cleanup~~ — done
+- ~~xBZZ pre-check on extensions, dynamic size presets > current batch~~ — done
 
-**Slice 1: SwarmService foundation (no UI changes)**
+Milestone 2a — publish service backend:
+- ~~publishData, publishFile (streaming), publishDirectory (async walk)~~ — done
+- ~~Batch auto-selection with 1.5x safety margin~~ — done
+- ~~Normalized upload result and tag status~~ — done
+- ~~IPC + preload exposure~~ — done
 
-1. `npm install @ethersphere/bee-js`
-2. Create `src/main/swarm/swarm-service.js`:
-   - Lazy `Bee` client instantiation from service registry URL
-   - Own cached URL alongside client (not `beeClient._url`)
-   - Client recreation on URL change
-   - IPC handler registration
-3. Create `src/main/swarm/stamp-service.js` (read + estimate + buy only — extensions in 1b):
-   - `swarm:get-stamps` — list batches via `bee.getAllPostageBatch()`, normalize to Freedom batch model
-   - `swarm:get-storage-cost` — estimate via `bee.getStorageCost(Size, Duration)`, return formatted xBZZ string
-   - `swarm:buy-storage` — purchase via `bee.buyStorage(Size, Duration)`, return batch ID
-4. Expose via preload as `window.swarmNode.getStamps()`, `.getStorageCost(sizeGB, durationDays)`, `.buyStorage(sizeGB, durationDays)`
-5. Tests:
-   - Unit tests for stamp-service normalization and IPC handlers (mocked bee-js)
-   - Integration test against live Bee node for `getStamps` and `getStorageCost` roundtrip
+### Next: Milestone 2b/c — publish UI and history
 
-**Slice 2: Checklist stamp purchase UI**
+**WP2-B: Publish utility UI**
 
-1. Wire step 5 of the publish setup checklist to `window.swarmNode`
-2. Implement the purchase state machine (idle → estimating → ready_to_buy → purchasing → waiting_for_usable → usable)
-3. Show preset size/duration options with live cost estimation
-4. Show Bee wallet xBZZ balance alongside cost
-5. Purchase flow with progress indicator
-6. Poll `getStamps` until the new batch becomes `usable`
-7. Flip checklist to "Ready to publish" on success
-8. Tests:
-   - Unit tests for purchase state transitions
-   - Integration test for stamp purchase roundtrip (if Bee is available)
+1. New sidebar sub-screen "Publish" accessible from node card when publish-ready
+2. Three publish actions:
+   - "Publish File" → `dialog.showOpenDialog` from main process → `publishFile` IPC → show result
+   - "Publish Folder" → directory picker → `publishDirectory` IPC → show progress + result
+   - "Publish Text" → textarea → `publishData` IPC → show result
+3. Progress display: poll `getUploadStatus` for deferred uploads
+4. Result display: bzz:// URL (clickable, opens new tab), reference, copy buttons
+5. Add file picker IPC handler in main process (`dialog.showOpenDialog` / `dialog.showOpenDialog({ properties: ['openDirectory'] })`)
 
-### After: Milestone 1b — stamp management UI
+**WP2-C: Publish history**
 
-- Add stamp list view accessible from node card
-- Batch detail display (size, used, remaining, TTL, usage %)
-- Extend duration and size flows with cost estimation
-- Batch expiry warnings
-- Buy additional batches
+1. `src/main/swarm/publish-history.js`: persist recent publishes to JSON file
+2. Entry model: `{ reference, bzzUrl, type, name, timestamp, tagUid, batchIdUsed, status }`
+3. Status lifecycle: `uploading` → `syncing` → `completed` / `failed`
+4. IPC: `swarm:get-publish-history`, `swarm:clear-publish-history`
+5. Preload: `window.swarmNode.getPublishHistory()`, `.clearPublishHistory()`
+6. Auto-record on upload completion in publish-service
+7. Show in the publish utility UI as a recent publishes list
 
-### Later: Milestones 2-5
+### Later: Milestones 3-5
 
-See revised roadmap above. Milestone 2 (publishing substrate) depends on 1a. Milestone 3 (`window.swarm` provider) depends on 2.
+- Milestone 3: `window.swarm` provider for third-party pages (depends on Milestone 2)
+- Milestone 4: Mutable publishing and feed identities (depends on Milestone 3)
+- Milestone 5: Durability and advanced capabilities (depends on Milestone 4)
 
 ## References
 
@@ -1502,10 +1556,14 @@ See revised roadmap above. Milestone 2 (publishing substrate) depends on 1a. Mil
 - `src/renderer/lib/wallet/publish-setup.js` — publish setup checklist (5-step guided flow)
 - `src/renderer/lib/wallet/swarm-readiness.js` — pure-function readiness classifier and prerequisite checks
 - `src/renderer/lib/wallet/bee-api.js` — shared fetchBeeJson helper
-- `src/renderer/lib/wallet/wallet-utils.js` — ZERO_ADDRESS, isChequebookDeployed, formatBalance
+- `src/renderer/lib/wallet/wallet-utils.js` — ZERO_ADDRESS, isChequebookDeployed, formatBalance, formatRawTokenBalance, formatBytes
+- `src/renderer/lib/wallet/stamp-manager.js` — stamp manager sidebar sub-screen (purchase, batch list, extensions)
 - `src/renderer/lib/wallet/send.js` — send flow with openSend export and pre-fill options
 - `src/renderer/lib/wallet/receive.js` — receive screen with QR code (openReceive export)
 - `src/renderer/lib/tabs.js` — createTab with protocol URL routing (ens://, bzz://, ipfs://)
+- `src/main/swarm/swarm-service.js` — Bee client lifecycle, selectBestBatch, shared toHex
+- `src/main/swarm/stamp-service.js` — stamp operations (list, cost, buy, extend) with Freedom batch model
+- `src/main/swarm/publish-service.js` — upload operations (data, file stream, directory async walk)
 
 ### External docs
 
