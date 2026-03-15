@@ -142,11 +142,26 @@ const DURATION_PRESETS = [
   { label: '+90 days', days: 90 },
 ];
 
-const SIZE_PRESETS = [
-  { label: '5 GB', gb: 5 },
-  { label: '10 GB', gb: 10 },
-  { label: '20 GB', gb: 20 },
-];
+/**
+ * Generate size extension presets that are strictly larger than the
+ * current batch size. bee-js treats size as ABSOLUTE (new total).
+ */
+function getSizePresetsForBatch(currentSizeBytes) {
+  const currentGB = currentSizeBytes / (1000 * 1000 * 1000); // bee-js uses 1000-based units
+  const candidates = [1, 2, 5, 10, 20, 50, 100];
+  const presets = [];
+  for (const gb of candidates) {
+    if (gb > currentGB && presets.length < 3) {
+      presets.push({ label: `${gb} GB`, gb });
+    }
+  }
+  // Fallback if batch is already very large
+  if (presets.length === 0) {
+    const next = Math.ceil(currentGB / 10) * 10 + 10;
+    presets.push({ label: `${next} GB`, gb: next });
+  }
+  return presets;
+}
 
 const TTL_WARN_SECONDS = 7 * 86400; // 7 days
 const TTL_CRITICAL_SECONDS = 86400; // 1 day
@@ -249,7 +264,7 @@ function showExtensionForm(card, batch, type) {
   const form = document.createElement('div');
   form.className = 'stamp-extend-form';
 
-  const presets = type === 'duration' ? DURATION_PRESETS : SIZE_PRESETS;
+  const presets = type === 'duration' ? DURATION_PRESETS : getSizePresetsForBatch(batch.sizeBytes);
   const title = type === 'duration' ? 'Extend Duration' : 'Extend Size';
 
   const heading = document.createElement('div');

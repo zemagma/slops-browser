@@ -208,7 +208,12 @@ function registerSwarmIpc() {
       }
 
       // Pre-check: verify xBZZ balance covers the estimated cost
-      const insufficientError = await checkBzzSufficiency(sizeGB, durationDays);
+      const bee = getBee();
+      const purchaseCost = await bee.getStorageCost(
+        Size.fromGigabytes(sizeGB),
+        Duration.fromDays(durationDays)
+      );
+      const insufficientError = await checkBzzBalance(purchaseCost);
       if (insufficientError) {
         return { success: false, error: insufficientError };
       }
@@ -261,6 +266,13 @@ function registerSwarmIpc() {
       if (!isPositiveNumber(additionalDays)) {
         return { success: false, error: 'Duration must be a positive number' };
       }
+      // Pre-check xBZZ balance
+      const durCostBzz = await getBee().getDurationExtensionCost(batchId, Duration.fromDays(additionalDays));
+      const durInsufficient = await checkBzzBalance(durCostBzz);
+      if (durInsufficient) {
+        return { success: false, error: durInsufficient };
+      }
+
       const resultId = await extendStorageDuration(batchId, additionalDays);
       return { success: true, batchId: resultId };
     } catch (err) {
@@ -277,6 +289,13 @@ function registerSwarmIpc() {
       if (!isPositiveNumber(newSizeGB)) {
         return { success: false, error: 'Size must be a positive number' };
       }
+      // Pre-check xBZZ balance
+      const sizeCostBzz = await getBee().getSizeExtensionCost(batchId, Size.fromGigabytes(newSizeGB));
+      const sizeInsufficient = await checkBzzBalance(sizeCostBzz);
+      if (sizeInsufficient) {
+        return { success: false, error: sizeInsufficient };
+      }
+
       const resultId = await extendStorageSize(batchId, newSizeGB);
       return { success: true, batchId: resultId };
     } catch (err) {
@@ -302,26 +321,19 @@ async function getBzzBalance() {
 }
 
 /**
- * Check if the Bee wallet has enough xBZZ for the given storage purchase.
- * Uses exact PLUR values for comparison, not rounded display strings.
- * Returns an error string if insufficient, or null if OK.
+ * Check if the Bee wallet has enough xBZZ for a given cost.
+ * Uses exact PLUR values. Returns an error string if insufficient, null if OK.
+ * Non-fatal: returns null on any check failure so the operation can proceed.
  */
-async function checkBzzSufficiency(sizeGB, durationDays) {
+async function checkBzzBalance(costBzz) {
   try {
-    const bee = getBee();
-
-    const cost = await bee.getStorageCost(
-      Size.fromGigabytes(sizeGB),
-      Duration.fromDays(durationDays)
-    );
-
-    const costPlur = cost.toPLURBigInt();
+    const costPlur = costBzz.toPLURBigInt();
     const bzzBalance = await getBzzBalance();
 
-    if (bzzBalance === null) return null; // Can't check — let Bee handle it
+    if (bzzBalance === null) return null;
 
     if (costPlur > 0n && bzzBalance < costPlur) {
-      return `Insufficient xBZZ. Estimated cost is ~${cost.toSignificantDigits(4)} xBZZ.`;
+      return `Insufficient xBZZ. Estimated cost is ~${costBzz.toSignificantDigits(4)} xBZZ.`;
     }
 
     return null;
