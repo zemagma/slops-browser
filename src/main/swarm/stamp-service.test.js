@@ -14,6 +14,10 @@ const mockGetPostageBatches = jest.fn();
 const mockGetStorageCost = jest.fn();
 const mockBuyStorage = jest.fn();
 const mockGetWalletBalance = jest.fn();
+const mockGetDurationExtensionCost = jest.fn();
+const mockGetSizeExtensionCost = jest.fn();
+const mockExtendStorageDuration = jest.fn();
+const mockExtendStorageSize = jest.fn();
 
 jest.mock('@ethersphere/bee-js', () => ({
   Bee: jest.fn().mockImplementation(() => ({
@@ -21,6 +25,10 @@ jest.mock('@ethersphere/bee-js', () => ({
     getStorageCost: mockGetStorageCost,
     buyStorage: mockBuyStorage,
     getWalletBalance: mockGetWalletBalance,
+    getDurationExtensionCost: mockGetDurationExtensionCost,
+    getSizeExtensionCost: mockGetSizeExtensionCost,
+    extendStorageDuration: mockExtendStorageDuration,
+    extendStorageSize: mockExtendStorageSize,
   })),
   Size: {
     fromGigabytes: jest.fn((gb) => ({ gb })),
@@ -64,7 +72,7 @@ function makeBatch(overrides = {}) {
     size: { toBytes: () => 5368709120 },
     remainingSize: { toBytes: () => 4000000000 },
     usage: 0.255,
-    duration: { toSeconds: () => 2592000 },
+    duration: { toSeconds: () => 2592000, toEndDate: () => new Date('2026-04-14T00:00:00Z') },
     ...overrides,
   };
 }
@@ -82,6 +90,7 @@ describe('stamp-service', () => {
         remainingBytes: 4000000000,
         usagePercent: 26,
         ttlSeconds: 2592000,
+        expiresApprox: '2026-04-14T00:00:00.000Z',
       });
     });
 
@@ -109,6 +118,7 @@ describe('stamp-service', () => {
         remainingBytes: 500,
         usagePercent: 50,
         ttlSeconds: 86400,
+        expiresApprox: null,
       });
     });
 
@@ -121,6 +131,7 @@ describe('stamp-service', () => {
       expect(result.remainingBytes).toBe(0);
       expect(result.usagePercent).toBe(0);
       expect(result.ttlSeconds).toBe(0);
+      expect(result.expiresApprox).toBeNull();
     });
   });
 
@@ -143,6 +154,7 @@ describe('stamp-service', () => {
         remainingBytes: 4000000000,
         usagePercent: 26,
         ttlSeconds: 2592000,
+        expiresApprox: '2026-04-14T00:00:00.000Z',
       });
     });
 
@@ -261,6 +273,68 @@ describe('stamp-service', () => {
     test('swarm:buy-storage rejects invalid inputs', async () => {
       const result = await invokeIpc('swarm:buy-storage', -1, 30);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('extension IPC handlers', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    test('swarm:get-duration-extension-cost returns formatted xBZZ', async () => {
+      mockGetDurationExtensionCost.mockResolvedValue({
+        toSignificantDigits: () => '0.05',
+      });
+
+      const result = await invokeIpc('swarm:get-duration-extension-cost', 'abc123', 30);
+      expect(result.success).toBe(true);
+      expect(result.bzz).toBe('0.05');
+    });
+
+    test('swarm:get-duration-extension-cost rejects missing batch ID', async () => {
+      const result = await invokeIpc('swarm:get-duration-extension-cost', '', 30);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Batch ID');
+    });
+
+    test('swarm:get-size-extension-cost returns formatted xBZZ', async () => {
+      mockGetSizeExtensionCost.mockResolvedValue({
+        toSignificantDigits: () => '0.12',
+      });
+
+      const result = await invokeIpc('swarm:get-size-extension-cost', 'abc123', 5);
+      expect(result.success).toBe(true);
+      expect(result.bzz).toBe('0.12');
+    });
+
+    test('swarm:extend-storage-duration returns batch ID', async () => {
+      mockExtendStorageDuration.mockResolvedValue({ toHex: () => 'abc123' });
+
+      const result = await invokeIpc('swarm:extend-storage-duration', 'abc123', 30);
+      expect(result.success).toBe(true);
+      expect(result.batchId).toBe('abc123');
+    });
+
+    test('swarm:extend-storage-duration handles errors', async () => {
+      mockExtendStorageDuration.mockRejectedValue(new Error('insufficient funds'));
+
+      const result = await invokeIpc('swarm:extend-storage-duration', 'abc123', 30);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('insufficient funds');
+    });
+
+    test('swarm:extend-storage-size returns batch ID', async () => {
+      mockExtendStorageSize.mockResolvedValue({ toHex: () => 'abc123' });
+
+      const result = await invokeIpc('swarm:extend-storage-size', 'abc123', 10);
+      expect(result.success).toBe(true);
+      expect(result.batchId).toBe('abc123');
+    });
+
+    test('swarm:extend-storage-size rejects invalid inputs', async () => {
+      const result = await invokeIpc('swarm:extend-storage-size', 'abc123', -5);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('positive');
     });
   });
 });

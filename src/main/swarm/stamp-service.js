@@ -49,6 +49,15 @@ function normalizeBatch(batch) {
   const rawId = batch.batchID;
   const batchId = rawId && typeof rawId.toHex === 'function' ? rawId.toHex() : String(rawId || '');
 
+  let expiresApprox = null;
+  if (ttlSeconds > 0 && batch.duration && typeof batch.duration.toEndDate === 'function') {
+    try {
+      expiresApprox = batch.duration.toEndDate().toISOString();
+    } catch {
+      // Duration.toEndDate may fail for edge cases
+    }
+  }
+
   return {
     batchId,
     usable: batch.usable === true,
@@ -57,6 +66,7 @@ function normalizeBatch(batch) {
     remainingBytes,
     usagePercent: Math.round(usageRaw * 100),
     ttlSeconds,
+    expiresApprox,
   };
 }
 
@@ -103,6 +113,60 @@ async function buyStorage(sizeGB, durationDays) {
 }
 
 /**
+ * Estimate cost to extend a batch's duration.
+ */
+async function getDurationExtensionCost(batchIdHex, additionalDays) {
+  const bee = getBee();
+  const cost = await bee.getDurationExtensionCost(
+    batchIdHex,
+    Duration.fromDays(additionalDays)
+  );
+  return { bzz: cost.toSignificantDigits(4) };
+}
+
+/**
+ * Estimate cost to extend a batch's size.
+ */
+async function getSizeExtensionCost(batchIdHex, newSizeGB) {
+  const bee = getBee();
+  const cost = await bee.getSizeExtensionCost(
+    batchIdHex,
+    Size.fromGigabytes(newSizeGB)
+  );
+  return { bzz: cost.toSignificantDigits(4) };
+}
+
+/**
+ * Extend a batch's duration.
+ */
+async function extendStorageDuration(batchIdHex, additionalDays) {
+  const bee = getBee();
+  const result = await bee.extendStorageDuration(
+    batchIdHex,
+    Duration.fromDays(additionalDays),
+    { timeout: BUY_TIMEOUT_MS }
+  );
+  const resultHex = result && typeof result.toHex === 'function' ? result.toHex() : String(result || batchIdHex);
+  log.info(`[StampService] Extended duration of ${batchIdHex} by ${additionalDays} days`);
+  return resultHex;
+}
+
+/**
+ * Extend a batch's size.
+ */
+async function extendStorageSize(batchIdHex, newSizeGB) {
+  const bee = getBee();
+  const result = await bee.extendStorageSize(
+    batchIdHex,
+    Size.fromGigabytes(newSizeGB),
+    { timeout: BUY_TIMEOUT_MS }
+  );
+  const resultHex = result && typeof result.toHex === 'function' ? result.toHex() : String(result || batchIdHex);
+  log.info(`[StampService] Extended size of ${batchIdHex} to ${newSizeGB} GB`);
+  return resultHex;
+}
+
+/**
  * Register IPC handlers for stamp operations.
  */
 function registerSwarmIpc() {
@@ -145,6 +209,70 @@ function registerSwarmIpc() {
       return { success: true, batchId };
     } catch (err) {
       log.error('[StampService] Failed to buy storage:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('swarm:get-duration-extension-cost', async (_event, batchId, additionalDays) => {
+    try {
+      if (!batchId || typeof batchId !== 'string') {
+        return { success: false, error: 'Batch ID is required' };
+      }
+      if (!isPositiveNumber(additionalDays)) {
+        return { success: false, error: 'Duration must be a positive number' };
+      }
+      const cost = await getDurationExtensionCost(batchId, additionalDays);
+      return { success: true, ...cost };
+    } catch (err) {
+      log.error('[StampService] Failed to estimate duration extension cost:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('swarm:get-size-extension-cost', async (_event, batchId, newSizeGB) => {
+    try {
+      if (!batchId || typeof batchId !== 'string') {
+        return { success: false, error: 'Batch ID is required' };
+      }
+      if (!isPositiveNumber(newSizeGB)) {
+        return { success: false, error: 'Size must be a positive number' };
+      }
+      const cost = await getSizeExtensionCost(batchId, newSizeGB);
+      return { success: true, ...cost };
+    } catch (err) {
+      log.error('[StampService] Failed to estimate size extension cost:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('swarm:extend-storage-duration', async (_event, batchId, additionalDays) => {
+    try {
+      if (!batchId || typeof batchId !== 'string') {
+        return { success: false, error: 'Batch ID is required' };
+      }
+      if (!isPositiveNumber(additionalDays)) {
+        return { success: false, error: 'Duration must be a positive number' };
+      }
+      const resultId = await extendStorageDuration(batchId, additionalDays);
+      return { success: true, batchId: resultId };
+    } catch (err) {
+      log.error('[StampService] Failed to extend duration:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('swarm:extend-storage-size', async (_event, batchId, newSizeGB) => {
+    try {
+      if (!batchId || typeof batchId !== 'string') {
+        return { success: false, error: 'Batch ID is required' };
+      }
+      if (!isPositiveNumber(newSizeGB)) {
+        return { success: false, error: 'Size must be a positive number' };
+      }
+      const resultId = await extendStorageSize(batchId, newSizeGB);
+      return { success: true, batchId: resultId };
+    } catch (err) {
+      log.error('[StampService] Failed to extend size:', err.message);
       return { success: false, error: err.message };
     }
   });
