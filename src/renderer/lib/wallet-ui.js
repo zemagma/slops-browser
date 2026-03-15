@@ -109,7 +109,7 @@ function setupCoordinatorListeners() {
   }
 
   // Copy node identities
-  document.querySelectorAll('.node-copy-btn').forEach(btn => {
+  document.querySelectorAll('.node-copy-btn, .node-copy-btn-inline[data-copy]').forEach(btn => {
     btn.addEventListener('click', () => {
       const type = btn.dataset.copy;
       if (type) {

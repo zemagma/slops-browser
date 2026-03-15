@@ -65,10 +65,8 @@ export function initNodeStatus() {
 
   const chequebookCopyBtn = document.getElementById('swarm-chequebook-copy');
   if (chequebookCopyBtn) {
-    chequebookCopyBtn.addEventListener('click', async () => {
-      if (chequebookFullAddress) {
-        await window.electronAPI?.copyText?.(chequebookFullAddress);
-      }
+    chequebookCopyBtn.addEventListener('click', () => {
+      copyWithFeedback(chequebookFullAddress, chequebookCopyBtn);
     });
   }
 
@@ -415,6 +413,17 @@ function updateSwarmChequebook(addrResult, balResult) {
       typeof available === 'string' ? available : String(available || '0'),
       16
     );
+  }
+}
+
+async function copyWithFeedback(text, buttonEl) {
+  if (!text) return;
+  try {
+    await window.electronAPI?.copyText?.(text);
+    buttonEl.classList.add('copied');
+    setTimeout(() => buttonEl.classList.remove('copied'), 1500);
+  } catch {
+    // Non-critical
   }
 }
 

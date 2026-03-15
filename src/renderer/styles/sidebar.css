@@ -1713,7 +1713,7 @@
 
 .node-section-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
   margin-bottom: 6px;
 }
@@ -1753,6 +1753,10 @@
 .node-copy-btn-inline svg {
   width: 12px;
   height: 12px;
+}
+
+.node-copy-btn-inline.copied {
+  color: #4caf50;
 }
 
 [data-theme="light"] .node-copy-btn-inline:hover {
