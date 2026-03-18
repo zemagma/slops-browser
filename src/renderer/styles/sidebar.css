@@ -40,6 +40,7 @@
   flex-direction: column;
   height: 100%;
   width: 320px; /* Fixed width to prevent content reflow */
+  position: relative; /* Anchor for .sidebar-modal absolute positioning */
 }
 
 /* ============================================
@@ -912,6 +913,17 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* Modal subscreens overlay the entire sidebar content area, covering
+   the tab bar. Used for externally-triggered prompts (dApp/Swarm
+   permission requests) that need an answer before the user can
+   interact with anything else in the sidebar. */
+.sidebar-subscreen.sidebar-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--background);
 }
 
 .subscreen-header {
