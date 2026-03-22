@@ -12,6 +12,7 @@ export {
   deriveEthereumKey,
   deriveEd25519Key,
   deriveUserWallet,
+  derivePublisherKey,
   getSeed,
   PATHS,
 } from './derivation.js';

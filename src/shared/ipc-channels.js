@@ -166,4 +166,9 @@ module.exports = {
 
   // Swarm Provider (main-process authority)
   SWARM_PROVIDER_EXECUTE: 'swarm:provider-execute',
+
+  // Swarm Feed Store
+  SWARM_GET_ORIGIN_FEEDS: 'swarm:get-origin-feeds',
+  SWARM_HAS_FEED_IDENTITY: 'swarm:has-feed-identity',
+  SWARM_SET_FEED_IDENTITY: 'swarm:set-feed-identity',
 };

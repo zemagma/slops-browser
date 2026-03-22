@@ -234,6 +234,24 @@ function getDerivedKeys() {
 }
 
 /**
+ * Derive a Swarm publisher key at a specific origin index.
+ * Vault must be unlocked. Keys are derived on-demand (not pre-cached)
+ * because the number of origins is unbounded.
+ * @param {number} originIndex - Origin index (0, 1, 2, ...)
+ * @returns {Promise<Object>} { privateKey, publicKey, address, path, originIndex }
+ */
+async function getPublisherKey(originIndex) {
+  const identity = await loadIdentityModule();
+  const mnemonic = identity.getMnemonic();
+
+  if (!mnemonic) {
+    throw new Error('Vault must be unlocked to derive publisher keys');
+  }
+
+  return identity.derivePublisherKey(mnemonic, originIndex);
+}
+
+/**
  * Get the Bee data directory
  */
 function getBeeDataDir() {
@@ -1204,6 +1222,7 @@ module.exports = {
 
   // Key operations
   getDerivedKeys,
+  getPublisherKey,
 
   // Multi-wallet operations
   getDerivedWallets,
