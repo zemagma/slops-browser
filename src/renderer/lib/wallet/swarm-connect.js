@@ -420,7 +420,7 @@ function setupSwarmFeedScreen() {
  * Show the feed access approval prompt.
  * On approval, stores the chosen identity mode and grants feed access.
  */
-export function showSwarmFeedApproval(permissionKey, params, resolve, reject) {
+export async function showSwarmFeedApproval(permissionKey, params, resolve, reject) {
   swarmFeedPending = { permissionKey, resolve, reject };
 
   if (swarmFeedSite) {
@@ -428,11 +428,18 @@ export function showSwarmFeedApproval(permissionKey, params, resolve, reject) {
   }
 
   if (swarmFeedName) {
-    swarmFeedName.textContent = params?.name || 'unnamed';
+    swarmFeedName.textContent = params?.name || params?.feedId || 'unnamed';
   }
 
-  // Reset radio to default (app-scoped)
-  const defaultRadio = document.querySelector('input[name="swarm-feed-identity"][value="app-scoped"]');
+  // Pre-select the stored identity mode when re-granting, default to app-scoped for new origins
+  let defaultMode = 'app-scoped';
+  try {
+    const storedMode = await window.swarmFeedStore?.getIdentityMode?.(permissionKey);
+    if (storedMode) defaultMode = storedMode;
+  } catch {
+    // Non-critical
+  }
+  const defaultRadio = document.querySelector(`input[name="swarm-feed-identity"][value="${defaultMode}"]`);
   if (defaultRadio) defaultRadio.checked = true;
 
   hideAllSubscreens();
