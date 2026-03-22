@@ -1396,9 +1396,31 @@ Tasks:
   - `swarm_getUploadStatus` — tag-based progress
 - Return normalized results (reference, bzz:// URL, tag ID) instead of raw Bee responses
 
-#### Milestone 4: Mutable publishing and feed identities — NOT STARTED
+#### Milestone 4: Mutable publishing and feed identities — COMPLETE
 
-No changes from the original spec. Depends on Milestone 3.
+Goal: support stable, app-backed mutable publishing without reusing the Bee wallet or the user's main wallet.
+
+**Done:**
+
+- Dedicated Swarm publisher key derivation at `m/44'/73406'/{originIndex}'/0/0` — clean separation from user wallet, Bee wallet, Radicle, and IPFS namespaces
+- Feed metadata store (`swarm-feeds.json`) — per-origin identity mode, publisher key index, feed entries, separate from connection permissions
+- Identity mode choice (app-scoped vs bee-wallet) — chosen once per origin at first feed grant, survives permission revocation, but feed grant itself cleared on disconnect
+- Feed creation via bee-js `createFeedManifest` — stable `bzz://` manifest URLs that always resolve to latest update
+- Feed updates via bee-js `makeFeedWriter` + `writer.upload` — content-first model (publish content, then point feed at it)
+- `swarm_createFeed` / `swarm_updateFeed` provider methods with dedicated feed permission prompt
+- Idempotent `createFeed` — same `(origin, feedName)` returns same feed metadata
+- Feed approval UI with identity mode radio buttons (app-scoped pre-selected, stored mode shown on re-grant)
+- Feed operations recorded in publish history as `feed-create` / `feed-update` types
+- `feedGranted` flag separate from identity metadata — cleared on disconnect, requires re-approval on reconnect
+- Owner returned as checksummed `0x`-prefixed address for interoperability
+- 46+ new tests across derivation, feed store, feed service, and provider enforcement
+- Test page at `docs/swarm-provider-test/index.html` covers create feed, publish + update feed, idempotent check
+
+Implementation highlights:
+- `resolveSignerKey` dispatches by identity mode with exhaustive check for unknown modes
+- Topic derivation: `normalizedOrigin + "/" + feedName` ensures no cross-origin feed collision regardless of identity mode
+- Both `createFeed` and `updateFeed` trigger feed approval prompt when grant is missing (handles reconnect-then-update flows)
+- Feed manifest chunks are tiny (~4KB), so `selectBestBatch(4096)` is used for auto batch selection
 
 #### Milestone 5: Durability and advanced capabilities — NOT STARTED
 
@@ -1727,6 +1749,12 @@ window.swarm = {
   async getCapabilities() {
     return this.request({ method: 'swarm_getCapabilities' });
   },
+  async createFeed(params) {
+    return this.request({ method: 'swarm_createFeed', params });
+  },
+  async updateFeed(params) {
+    return this.request({ method: 'swarm_updateFeed', params });
+  },
 
   /**
    * Event emitter (connect, disconnect).
@@ -1745,6 +1773,8 @@ window.swarm = {
 | `swarm_publishData` | `{ data, contentType, name? }` | `{ reference, bzzUrl }` | Per-publish prompt |
 | `swarm_publishFiles` | `{ files, indexDocument? }` | `{ reference, bzzUrl, tagUid }` | Per-publish prompt |
 | `swarm_getUploadStatus` | `{ tagUid }` | `{ tagUid, split, sent, progress, done }` | No (after connect) |
+| `swarm_createFeed` | `{ name }` | `{ feedId, owner, topic, manifestReference, bzzUrl, identityMode }` | Feed prompt (first use) |
+| `swarm_updateFeed` | `{ feedId, reference }` | `{ feedId, reference, bzzUrl }` | Feed prompt (if grant missing) |
 
 #### Method parameter specs
 
@@ -2137,10 +2167,9 @@ Implementation highlights:
 
 13. **Future event shape: EIP-1193 style, but not yet.** v1 is polling-only (`getUploadStatus`). When we add real-time events (upload complete, feed updated, permission revoked), they will use the existing `on(event, handler)` pattern already wired into the provider. The `swarm:provider-event` IPC channel is reserved for this. Planned event names: `connect`, `disconnect`, `uploadComplete`. This note exists to prevent awkward API drift — the event emitter is already on the provider object, we just don't emit anything yet.
 
-### Next: Milestones 4-5
+### Next: Milestone 5
 
-- **Milestone 4: Mutable publishing and feed identities** — app-scoped publisher key derivation (dedicated HD path), feed creation/update via bee-js SOC/feeds API, feed manifests for stable URLs, `swarm_createFeed` / `swarm_updateFeed` provider methods, optional ENS guidance
-- **Milestone 5: Durability and advanced capabilities** — background pinned-content retrievability checks, reupload pinned data, ACT-based private sharing, optional manifest inspection
+- **Milestone 5: Durability and advanced capabilities** — background pinned-content retrievability checks, reupload pinned data, ACT-based private sharing, optional manifest inspection, `swarm_resolveFeed` (read-only feed lookup), ENS guidance for pointing names at feed manifests
 
 ## References
 
@@ -2183,6 +2212,9 @@ Implementation highlights:
 - `src/shared/ipc-channels.js` — IPC channel constants including Swarm provider channels
 - `src/main/webview-preload.js` — `window.swarm` provider injection + `freedomAPI.swarm.*` namespace for internal pages
 - `docs/swarm-provider-test/index.html` — test page for manual end-to-end verification of all provider methods
+- `src/main/swarm/feed-service.js` — feed creation and update via bee-js (createFeedManifest, makeFeedWriter)
+- `src/main/swarm/feed-store.js` — feed metadata persistence (identity mode, publisher key index, feed entries, feed grant state)
+- `src/main/identity/derivation.js` — now includes `derivePublisherKey` at `m/44'/73406'/{index}'/0/0`
 - `src/renderer/pages/publish.html` — `freedom://publish` internal app page
 - `src/renderer/pages/scripts/publish.js` — publish page logic (file/folder/text, progress, history)
 - `src/renderer/pages/styles/publish.css` — publish page styling
