@@ -171,4 +171,5 @@ module.exports = {
   SWARM_GET_ORIGIN_FEEDS: 'swarm:get-origin-feeds',
   SWARM_HAS_FEED_IDENTITY: 'swarm:has-feed-identity',
   SWARM_SET_FEED_IDENTITY: 'swarm:set-feed-identity',
+  SWARM_REVOKE_FEED_ACCESS: 'swarm:revoke-feed-access',
 };

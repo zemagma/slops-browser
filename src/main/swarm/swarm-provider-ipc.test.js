@@ -32,6 +32,35 @@ jest.mock('./publish-service', () => ({
   getUploadStatus: mockGetUploadStatus,
 }));
 
+const mockCreateFeed = jest.fn();
+const mockUpdateFeed = jest.fn();
+const mockBuildTopicString = jest.fn((origin, name) => `${origin}/${name}`);
+jest.mock('./feed-service', () => ({
+  createFeed: mockCreateFeed,
+  updateFeed: mockUpdateFeed,
+  buildTopicString: mockBuildTopicString,
+}));
+
+const mockGetOriginEntry = jest.fn();
+const mockGetFeed = jest.fn();
+const mockSetFeed = jest.fn();
+const mockUpdateFeedReference = jest.fn();
+const mockHasFeedGrant = jest.fn();
+jest.mock('./feed-store', () => ({
+  getOriginEntry: mockGetOriginEntry,
+  getFeed: mockGetFeed,
+  setFeed: mockSetFeed,
+  updateFeedReference: mockUpdateFeedReference,
+  hasFeedGrant: mockHasFeedGrant,
+}));
+
+const mockGetDerivedKeys = jest.fn();
+const mockGetPublisherKey = jest.fn();
+jest.mock('../identity-manager', () => ({
+  getDerivedKeys: mockGetDerivedKeys,
+  getPublisherKey: mockGetPublisherKey,
+}));
+
 const mockAddEntry = jest.fn().mockReturnValue({ id: 'test-id' });
 const mockUpdateEntry = jest.fn();
 jest.mock('./publish-history', () => ({
@@ -42,7 +71,7 @@ jest.mock('./publish-history', () => ({
 // Mock global fetch for pre-flight checks
 global.fetch = jest.fn();
 
-const { registerSwarmProviderIpc, executeSwarmMethod, checkSwarmPreFlight, validateVirtualPath, clearTagOwnership, LIMITS } = require('./swarm-provider-ipc');
+const { registerSwarmProviderIpc, executeSwarmMethod, checkSwarmPreFlight, validateVirtualPath, validateFeedName, clearTagOwnership, LIMITS } = require('./swarm-provider-ipc');
 
 registerSwarmProviderIpc();
 
@@ -600,6 +629,298 @@ describe('swarm-provider-ipc', () => {
       global.fetch.mockRejectedValue(new Error('ECONNREFUSED'));
       const result = await checkSwarmPreFlight();
       expect(result).toEqual({ ok: false, reason: 'node-stopped' });
+    });
+  });
+
+  describe('validateFeedName', () => {
+    test('accepts valid names', () => {
+      expect(validateFeedName('blog').valid).toBe(true);
+      expect(validateFeedName('my-feed').valid).toBe(true);
+      expect(validateFeedName('feed_123').valid).toBe(true);
+    });
+
+    test('rejects empty string', () => {
+      expect(validateFeedName('').valid).toBe(false);
+    });
+
+    test('rejects non-string', () => {
+      expect(validateFeedName(123).valid).toBe(false);
+      expect(validateFeedName(null).valid).toBe(false);
+    });
+
+    test('rejects names longer than 64 chars', () => {
+      expect(validateFeedName('a'.repeat(65)).valid).toBe(false);
+      expect(validateFeedName('a'.repeat(64)).valid).toBe(true);
+    });
+
+    test('rejects names containing /', () => {
+      expect(validateFeedName('path/name').valid).toBe(false);
+    });
+
+    test('rejects names containing control characters', () => {
+      expect(validateFeedName('feed\x00name').valid).toBe(false);
+      expect(validateFeedName('feed\nname').valid).toBe(false);
+    });
+  });
+
+  describe('swarm_createFeed', () => {
+    function mockPreFlightOk() {
+      mockGetBeeApiUrl.mockReturnValue('http://127.0.0.1:1633');
+      global.fetch
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ beeMode: 'light' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'ready' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ stamps: [{ usable: true }] }) });
+    }
+
+    function mockFeedCapability(origin, mode = 'app-scoped', keyIndex = 0) {
+      mockGetPermission.mockReturnValue({ origin, connectedAt: 1, lastUsed: 1, autoPublish: false });
+      mockHasFeedGrant.mockReturnValue(true);
+      mockGetOriginEntry.mockReturnValue({
+        identityMode: mode,
+        publisherKeyIndex: keyIndex,
+        feeds: {},
+      });
+    }
+
+    test('rejects missing name', async () => {
+      const result = await invokeProvider('swarm_createFeed', {}, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+      expect(result.error.data.reason).toBe('invalid_feed_name');
+    });
+
+    test('rejects name too long', async () => {
+      const result = await invokeProvider('swarm_createFeed', { name: 'a'.repeat(65) }, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+      expect(result.error.data.reason).toBe('invalid_feed_name');
+    });
+
+    test('rejects name with /', async () => {
+      const result = await invokeProvider('swarm_createFeed', { name: 'bad/name' }, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+      expect(result.error.data.reason).toBe('invalid_feed_name');
+    });
+
+    test('rejects without connection permission', async () => {
+      mockGetPermission.mockReturnValue(null);
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+      expect(result.error.code).toBe(4100);
+    });
+
+    test('rejects without feed capability (connected but no feed grant)', async () => {
+      mockGetPermission.mockReturnValue({ origin: 'myapp.eth' });
+      mockHasFeedGrant.mockReturnValue(false);
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+      expect(result.error.code).toBe(4100);
+    });
+
+    test('returns existing feed when idempotent', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue({
+        topic: 'aaa',
+        owner: '0xBBB',
+        manifestReference: 'ccc',
+        createdAt: 1000,
+      });
+
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+      expect(result.result.feedId).toBe('blog');
+      expect(result.result.owner).toBe('0xBBB');
+      expect(result.result.manifestReference).toBe('ccc');
+      expect(result.result.bzzUrl).toBe('bzz://ccc');
+      expect(result.result.identityMode).toBe('app-scoped');
+      // Should NOT call createFeed
+      expect(mockCreateFeed).not.toHaveBeenCalled();
+    });
+
+    test('returns 4900 when node is stopped', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue(null);
+      mockGetBeeApiUrl.mockReturnValue(null);
+
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+      expect(result.error.code).toBe(4900);
+    });
+
+    test('creates feed successfully with app-scoped identity', async () => {
+      mockFeedCapability('myapp.eth', 'app-scoped', 0);
+      mockGetFeed.mockReturnValue(null);
+      mockPreFlightOk();
+      mockGetPublisherKey.mockResolvedValue({ privateKey: '0xpublisherkey' });
+      mockCreateFeed.mockResolvedValue({
+        topic: 'topichex',
+        owner: '0xOwnerAddr',
+        manifestReference: 'manifesthex',
+        bzzUrl: 'bzz://manifesthex',
+      });
+
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+
+      expect(result.result.feedId).toBe('blog');
+      expect(result.result.owner).toBe('0xOwnerAddr');
+      expect(result.result.bzzUrl).toBe('bzz://manifesthex');
+      expect(result.result.identityMode).toBe('app-scoped');
+      expect(mockCreateFeed).toHaveBeenCalledWith('0xpublisherkey', 'myapp.eth/blog');
+      expect(mockSetFeed).toHaveBeenCalledWith('myapp.eth', 'blog', expect.objectContaining({
+        topic: 'topichex',
+        owner: '0xOwnerAddr',
+      }));
+    });
+
+    test('creates feed with bee-wallet identity', async () => {
+      mockFeedCapability('myapp.eth', 'bee-wallet');
+      mockGetFeed.mockReturnValue(null);
+      mockPreFlightOk();
+      mockGetDerivedKeys.mockReturnValue({ beeWallet: { privateKey: '0xbeekey' } });
+      mockCreateFeed.mockResolvedValue({
+        topic: 'topichex',
+        owner: '0xBeeOwner',
+        manifestReference: 'mref',
+        bzzUrl: 'bzz://mref',
+      });
+
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+
+      expect(result.result.identityMode).toBe('bee-wallet');
+      expect(mockCreateFeed).toHaveBeenCalledWith('0xbeekey', 'myapp.eth/blog');
+      expect(mockGetPublisherKey).not.toHaveBeenCalled();
+    });
+
+    test('records publish history on success', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue(null);
+      mockPreFlightOk();
+      mockGetPublisherKey.mockResolvedValue({ privateKey: '0xkey' });
+      mockCreateFeed.mockResolvedValue({
+        topic: 't', owner: 'o', manifestReference: 'm', bzzUrl: 'bzz://m',
+      });
+
+      await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+
+      expect(mockAddEntry).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'feed-create',
+        name: 'blog',
+        status: 'uploading',
+      }));
+      expect(mockUpdateEntry).toHaveBeenCalledWith('test-id', expect.objectContaining({
+        status: 'completed',
+      }));
+    });
+
+    test('records failure in publish history', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue(null);
+      mockPreFlightOk();
+      mockGetPublisherKey.mockResolvedValue({ privateKey: '0xkey' });
+      mockCreateFeed.mockRejectedValue(new Error('bee error'));
+
+      const result = await invokeProvider('swarm_createFeed', { name: 'blog' }, 'myapp.eth');
+
+      expect(result.error.code).toBe(-32603);
+      expect(mockUpdateEntry).toHaveBeenCalledWith('test-id', { status: 'failed' });
+    });
+  });
+
+  describe('swarm_updateFeed', () => {
+    const VALID_REF = 'aa'.repeat(32);
+
+    function mockPreFlightOk() {
+      mockGetBeeApiUrl.mockReturnValue('http://127.0.0.1:1633');
+      global.fetch
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ beeMode: 'light' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'ready' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ stamps: [{ usable: true }] }) });
+    }
+
+    function mockFeedCapability(origin, mode = 'app-scoped', keyIndex = 0) {
+      mockGetPermission.mockReturnValue({ origin, connectedAt: 1, lastUsed: 1, autoPublish: false });
+      mockHasFeedGrant.mockReturnValue(true);
+      mockGetOriginEntry.mockReturnValue({
+        identityMode: mode,
+        publisherKeyIndex: keyIndex,
+        feeds: {},
+      });
+    }
+
+    test('rejects missing feedId', async () => {
+      const result = await invokeProvider('swarm_updateFeed', { reference: VALID_REF }, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+    });
+
+    test('rejects missing reference', async () => {
+      const result = await invokeProvider('swarm_updateFeed', { feedId: 'blog' }, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+      expect(result.error.data.reason).toBe('invalid_reference');
+    });
+
+    test('rejects invalid reference format', async () => {
+      const result = await invokeProvider('swarm_updateFeed', { feedId: 'blog', reference: 'not-hex' }, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+      expect(result.error.data.reason).toBe('invalid_reference');
+    });
+
+    test('rejects without feed capability', async () => {
+      mockGetPermission.mockReturnValue(null);
+      const result = await invokeProvider('swarm_updateFeed', { feedId: 'blog', reference: VALID_REF }, 'myapp.eth');
+      expect(result.error.code).toBe(4100);
+    });
+
+    test('rejects when feed not found', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue(null);
+      const result = await invokeProvider('swarm_updateFeed', { feedId: 'nonexistent', reference: VALID_REF }, 'myapp.eth');
+      expect(result.error.code).toBe(-32602);
+      expect(result.error.data.reason).toBe('feed_not_found');
+    });
+
+    test('updates feed successfully', async () => {
+      mockFeedCapability('myapp.eth', 'app-scoped', 0);
+      mockGetFeed.mockReturnValue({
+        topic: 'topichex',
+        owner: '0xOwner',
+        manifestReference: 'mref',
+      });
+      mockPreFlightOk();
+      mockGetPublisherKey.mockResolvedValue({ privateKey: '0xpubkey' });
+      mockUpdateFeed.mockResolvedValue({ success: true });
+
+      const result = await invokeProvider('swarm_updateFeed', { feedId: 'blog', reference: VALID_REF }, 'myapp.eth');
+
+      expect(result.result.feedId).toBe('blog');
+      expect(result.result.reference).toBe(VALID_REF);
+      expect(result.result.bzzUrl).toBe('bzz://mref');
+      expect(mockUpdateFeed).toHaveBeenCalledWith('0xpubkey', 'myapp.eth/blog', VALID_REF);
+      expect(mockUpdateFeedReference).toHaveBeenCalledWith('myapp.eth', 'blog', VALID_REF);
+    });
+
+    test('records publish history as feed-update', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue({ topic: 't', owner: 'o', manifestReference: 'm' });
+      mockPreFlightOk();
+      mockGetPublisherKey.mockResolvedValue({ privateKey: '0xkey' });
+      mockUpdateFeed.mockResolvedValue({ success: true });
+
+      await invokeProvider('swarm_updateFeed', { feedId: 'blog', reference: VALID_REF }, 'myapp.eth');
+
+      expect(mockAddEntry).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'feed-update',
+        name: 'blog',
+      }));
+      expect(mockUpdateEntry).toHaveBeenCalledWith('test-id', expect.objectContaining({
+        status: 'completed',
+      }));
+    });
+
+    test('records failure in publish history', async () => {
+      mockFeedCapability('myapp.eth');
+      mockGetFeed.mockReturnValue({ topic: 't', owner: 'o', manifestReference: 'm' });
+      mockPreFlightOk();
+      mockGetPublisherKey.mockResolvedValue({ privateKey: '0xkey' });
+      mockUpdateFeed.mockRejectedValue(new Error('network error'));
+
+      const result = await invokeProvider('swarm_updateFeed', { feedId: 'blog', reference: VALID_REF }, 'myapp.eth');
+
+      expect(result.error.code).toBe(-32603);
+      expect(mockUpdateEntry).toHaveBeenCalledWith('test-id', { status: 'failed' });
     });
   });
 });

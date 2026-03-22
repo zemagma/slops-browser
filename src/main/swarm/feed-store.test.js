@@ -43,6 +43,9 @@ const {
   updateFeedReference,
   getAllFeeds,
   hasIdentityMode,
+  hasFeedGrant,
+  grantFeedAccess,
+  revokeFeedAccess,
   registerFeedStoreIpc,
   _resetCache,
 } = require('./feed-store');
@@ -262,6 +265,61 @@ describe('feed-store', () => {
     });
   });
 
+  describe('feed grant lifecycle', () => {
+    test('hasFeedGrant returns false for unknown origin', () => {
+      expect(hasFeedGrant('unknown.eth')).toBe(false);
+    });
+
+    test('hasFeedGrant returns false after setOriginEntry without feedGranted', () => {
+      setOriginEntry('myapp.eth', { identityMode: 'bee-wallet' });
+      expect(hasFeedGrant('myapp.eth')).toBe(false);
+    });
+
+    test('hasFeedGrant returns true after setOriginEntry with feedGranted', () => {
+      setOriginEntry('myapp.eth', { identityMode: 'bee-wallet', feedGranted: true });
+      expect(hasFeedGrant('myapp.eth')).toBe(true);
+    });
+
+    test('grantFeedAccess sets feedGranted to true', () => {
+      setOriginEntry('myapp.eth', { identityMode: 'app-scoped', publisherKeyIndex: 0 });
+      expect(hasFeedGrant('myapp.eth')).toBe(false);
+      grantFeedAccess('myapp.eth');
+      expect(hasFeedGrant('myapp.eth')).toBe(true);
+    });
+
+    test('revokeFeedAccess clears feedGranted but preserves identity', () => {
+      setOriginEntry('myapp.eth', { identityMode: 'app-scoped', publisherKeyIndex: 0, feedGranted: true });
+      setFeed('myapp.eth', 'blog', { topic: 'a', owner: 'b', manifestReference: 'c' });
+
+      revokeFeedAccess('myapp.eth');
+
+      expect(hasFeedGrant('myapp.eth')).toBe(false);
+      // Identity metadata preserved
+      expect(hasIdentityMode('myapp.eth')).toBe(true);
+      const entry = getOriginEntry('myapp.eth');
+      expect(entry.identityMode).toBe('app-scoped');
+      expect(entry.publisherKeyIndex).toBe(0);
+      // Feeds preserved
+      expect(getFeed('myapp.eth', 'blog')).not.toBeNull();
+    });
+
+    test('re-granting after revoke uses same identity', () => {
+      setOriginEntry('myapp.eth', { identityMode: 'app-scoped', publisherKeyIndex: 5, feedGranted: true });
+      revokeFeedAccess('myapp.eth');
+      grantFeedAccess('myapp.eth');
+
+      const entry = getOriginEntry('myapp.eth');
+      expect(entry.feedGranted).toBe(true);
+      expect(entry.publisherKeyIndex).toBe(5); // Same key, not re-allocated
+    });
+
+    test('feedGranted survives cache reset', () => {
+      setOriginEntry('myapp.eth', { identityMode: 'bee-wallet', feedGranted: true });
+      _resetCache();
+      expect(hasFeedGrant('myapp.eth')).toBe(true);
+    });
+  });
+
   describe('IPC handlers', () => {
     beforeAll(() => {
       registerFeedStoreIpc();
@@ -313,6 +371,31 @@ describe('feed-store', () => {
       ipcHandlers[IPC.SWARM_SET_FEED_IDENTITY]({}, 'ipc-test2.eth', 'bee-wallet');
       const result = ipcHandlers[IPC.SWARM_HAS_FEED_IDENTITY]({}, 'ipc-test2.eth');
       expect(result).toBe(true);
+    });
+
+    test('set-feed-identity also grants feed access', () => {
+      _resetCache();
+      ipcHandlers[IPC.SWARM_SET_FEED_IDENTITY]({}, 'ipc-grant.eth', 'app-scoped');
+      expect(hasFeedGrant('ipc-grant.eth')).toBe(true);
+    });
+
+    test('revoke-feed-access clears feed grant', () => {
+      _resetCache();
+      ipcHandlers[IPC.SWARM_SET_FEED_IDENTITY]({}, 'ipc-revoke.eth', 'bee-wallet');
+      expect(hasFeedGrant('ipc-revoke.eth')).toBe(true);
+      ipcHandlers[IPC.SWARM_REVOKE_FEED_ACCESS]({}, 'ipc-revoke.eth');
+      expect(hasFeedGrant('ipc-revoke.eth')).toBe(false);
+      // Identity preserved
+      expect(hasIdentityMode('ipc-revoke.eth')).toBe(true);
+    });
+
+    test('set-feed-identity re-grants after revocation without new key', () => {
+      _resetCache();
+      const first = ipcHandlers[IPC.SWARM_SET_FEED_IDENTITY]({}, 'ipc-regrant.eth', 'app-scoped');
+      ipcHandlers[IPC.SWARM_REVOKE_FEED_ACCESS]({}, 'ipc-regrant.eth');
+      const second = ipcHandlers[IPC.SWARM_SET_FEED_IDENTITY]({}, 'ipc-regrant.eth', 'app-scoped');
+      expect(second.feedGranted).toBe(true);
+      expect(second.publisherKeyIndex).toBe(first.publisherKeyIndex);
     });
   });
 });

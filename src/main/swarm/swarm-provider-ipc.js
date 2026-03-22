@@ -26,8 +26,11 @@ const IPC = require('../../shared/ipc-channels');
 const { normalizeOrigin } = require('../../shared/origin-utils');
 const { getPermission } = require('./swarm-permissions');
 const { publishData, publishFilesFromContent, getUploadStatus } = require('./publish-service');
+const { createFeed, updateFeed, buildTopicString } = require('./feed-service');
+const { getOriginEntry, getFeed, setFeed, updateFeedReference, hasFeedGrant } = require('./feed-store');
 const { addEntry, updateEntry } = require('./publish-history');
 const { getBeeApiUrl } = require('../service-registry');
+const { getDerivedKeys, getPublisherKey } = require('../identity-manager');
 const log = require('electron-log');
 
 const LIMITS = {
@@ -51,6 +54,8 @@ const KNOWN_METHODS = [
   'swarm_publishData',
   'swarm_publishFiles',
   'swarm_getUploadStatus',
+  'swarm_createFeed',
+  'swarm_updateFeed',
 ];
 
 // Tag ownership: tagUid → origin. Session-scoped, not persisted.
@@ -106,6 +111,14 @@ async function executeSwarmMethod(method, params, origin) {
 
     if (method === 'swarm_getUploadStatus') {
       return handleGetUploadStatus(params, normalizedOrigin);
+    }
+
+    if (method === 'swarm_createFeed') {
+      return handleCreateFeed(params, normalizedOrigin);
+    }
+
+    if (method === 'swarm_updateFeed') {
+      return handleUpdateFeed(params, normalizedOrigin);
     }
 
     return { error: ERRORS.INTERNAL_ERROR };
@@ -395,6 +408,207 @@ async function handleGetUploadStatus(params, origin) {
 }
 
 /**
+ * Validate a feed name.
+ * @returns {{ valid: boolean, message?: string }}
+ */
+function validateFeedName(name) {
+  if (typeof name !== 'string' || name.length === 0) {
+    return { valid: false, message: 'Feed name must be a non-empty string' };
+  }
+  if (name.length > 64) {
+    return { valid: false, message: 'Feed name exceeds 64 characters' };
+  }
+  if (name.includes('/')) {
+    return { valid: false, message: 'Feed name must not contain "/"' };
+  }
+  for (let i = 0; i < name.length; i++) {
+    if (name.charCodeAt(i) < 32) {
+      return { valid: false, message: 'Feed name must not contain control characters' };
+    }
+  }
+  return { valid: true };
+}
+
+/**
+ * Resolve the signer private key for an origin based on its identity mode.
+ * @param {Object} originEntry - Origin entry from feed-store (must have identityMode set)
+ * @returns {Promise<string>} 0x-prefixed hex private key
+ */
+async function resolveSignerKey(originEntry) {
+  if (originEntry.identityMode === 'bee-wallet') {
+    const keys = getDerivedKeys();
+    if (!keys) {
+      throw new Error('Vault is locked');
+    }
+    return keys.beeWallet.privateKey;
+  }
+
+  if (originEntry.identityMode === 'app-scoped') {
+    const publisherKey = await getPublisherKey(originEntry.publisherKeyIndex);
+    return publisherKey.privateKey;
+  }
+
+  throw new Error(`Unknown identity mode: ${originEntry.identityMode}`);
+}
+
+/**
+ * Handle swarm_createFeed: validate, check capability, create feed + manifest.
+ */
+async function handleCreateFeed(params, origin) {
+  if (!params || typeof params !== 'object') {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'params is required', data: { reason: 'invalid_params' } } };
+  }
+
+  const { name } = params;
+  const nameResult = validateFeedName(name);
+  if (!nameResult.valid) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: nameResult.message, data: { reason: 'invalid_feed_name' } } };
+  }
+
+  // Feed capability = connection permission (already checked by caller) + active feed grant
+  if (!hasFeedGrant(origin)) {
+    return { error: { ...ERRORS.UNAUTHORIZED, message: 'Feed access not granted. Renderer should show feed prompt first.', data: { reason: 'feed_not_granted' } } };
+  }
+
+  const originEntry = getOriginEntry(origin);
+
+  // Idempotent: if feed already exists, return existing metadata
+  const existingFeed = getFeed(origin, name);
+  if (existingFeed) {
+    return {
+      result: {
+        feedId: name,
+        owner: existingFeed.owner,
+        topic: existingFeed.topic,
+        manifestReference: existingFeed.manifestReference,
+        bzzUrl: `bzz://${existingFeed.manifestReference}`,
+        identityMode: originEntry.identityMode,
+      },
+    };
+  }
+
+  const preFlight = await checkSwarmPreFlight();
+  if (!preFlight.ok) {
+    return { error: { ...ERRORS.NODE_UNAVAILABLE, message: `Node not available: ${preFlight.reason}`, data: { reason: preFlight.reason } } };
+  }
+
+  let signerKey;
+  try {
+    signerKey = await resolveSignerKey(originEntry);
+  } catch (err) {
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+
+  const topicString = buildTopicString(origin, name);
+
+  const historyEntry = addEntry({
+    type: 'feed-create',
+    name,
+    status: 'uploading',
+  });
+
+  try {
+    const result = await createFeed(signerKey, topicString);
+
+    setFeed(origin, name, {
+      topic: result.topic,
+      owner: result.owner,
+      manifestReference: result.manifestReference,
+    });
+
+    updateEntry(historyEntry.id, { status: 'completed', ...result });
+
+    log.info(`[SwarmProvider] createFeed succeeded for ${origin}: feed=${name}, bzzUrl=${result.bzzUrl}`);
+
+    return {
+      result: {
+        feedId: name,
+        owner: result.owner,
+        topic: result.topic,
+        manifestReference: result.manifestReference,
+        bzzUrl: result.bzzUrl,
+        identityMode: originEntry.identityMode,
+      },
+    };
+  } catch (err) {
+    updateEntry(historyEntry.id, { status: 'failed' });
+    log.error(`[SwarmProvider] createFeed failed for ${origin}:`, err.message);
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+}
+
+/**
+ * Handle swarm_updateFeed: validate, check capability, update feed reference.
+ */
+async function handleUpdateFeed(params, origin) {
+  if (!params || typeof params !== 'object') {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'params is required', data: { reason: 'invalid_params' } } };
+  }
+
+  const { feedId, reference } = params;
+
+  if (!feedId || typeof feedId !== 'string') {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'feedId is required', data: { reason: 'invalid_params' } } };
+  }
+
+  if (!reference || typeof reference !== 'string' || !/^[0-9a-fA-F]{64}$/.test(reference)) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'reference must be a 64-character hex string', data: { reason: 'invalid_reference' } } };
+  }
+
+  if (!hasFeedGrant(origin)) {
+    return { error: { ...ERRORS.UNAUTHORIZED, message: 'Feed access not granted.', data: { reason: 'feed_not_granted' } } };
+  }
+
+  const originEntry = getOriginEntry(origin);
+
+  const existingFeed = getFeed(origin, feedId);
+  if (!existingFeed) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: `Feed not found: ${feedId}`, data: { reason: 'feed_not_found' } } };
+  }
+
+  const preFlight = await checkSwarmPreFlight();
+  if (!preFlight.ok) {
+    return { error: { ...ERRORS.NODE_UNAVAILABLE, message: `Node not available: ${preFlight.reason}`, data: { reason: preFlight.reason } } };
+  }
+
+  let signerKey;
+  try {
+    signerKey = await resolveSignerKey(originEntry);
+  } catch (err) {
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+
+  const topicString = buildTopicString(origin, feedId);
+
+  const historyEntry = addEntry({
+    type: 'feed-update',
+    name: feedId,
+    status: 'uploading',
+  });
+
+  try {
+    await updateFeed(signerKey, topicString, reference);
+
+    updateFeedReference(origin, feedId, reference);
+    updateEntry(historyEntry.id, { status: 'completed', reference });
+
+    log.info(`[SwarmProvider] updateFeed succeeded for ${origin}: feed=${feedId}, ref=${reference}`);
+
+    return {
+      result: {
+        feedId,
+        reference,
+        bzzUrl: `bzz://${existingFeed.manifestReference}`,
+      },
+    };
+  } catch (err) {
+    updateEntry(historyEntry.id, { status: 'failed' });
+    log.error(`[SwarmProvider] updateFeed failed for ${origin}:`, err.message);
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+}
+
+/**
  * Pre-flight check: is Bee running, in light mode, with usable stamps?
  * @returns {{ ok: boolean, reason?: string }}
  */
@@ -458,6 +672,7 @@ module.exports = {
   executeSwarmMethod,
   checkSwarmPreFlight,
   validateVirtualPath,
+  validateFeedName,
   clearTagOwnership,
   LIMITS,
 };

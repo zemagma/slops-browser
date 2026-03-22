@@ -105,6 +105,7 @@ function setOriginEntry(origin, data) {
     ...existing,
     identityMode: data.identityMode,
     publisherKeyIndex: data.publisherKeyIndex ?? existing.publisherKeyIndex ?? null,
+    feedGranted: data.feedGranted ?? existing.feedGranted ?? false,
     grantedAt: existing.grantedAt || Date.now(),
     feeds: existing.feeds || {},
   };
@@ -228,6 +229,45 @@ function hasIdentityMode(origin) {
 }
 
 /**
+ * Check if an origin has an active feed grant.
+ * Unlike hasIdentityMode, this is cleared on disconnect and must be
+ * re-granted on reconnect through the feed approval prompt.
+ * @param {string} origin
+ * @returns {boolean}
+ */
+function hasFeedGrant(origin) {
+  const store = loadFeeds();
+  const key = normalizeOrigin(origin);
+  const entry = store.origins[key];
+  return !!(entry && entry.feedGranted);
+}
+
+/**
+ * Grant feed access for an origin. Called after the feed approval prompt.
+ * @param {string} origin
+ */
+function grantFeedAccess(origin) {
+  const store = loadFeeds();
+  const key = normalizeOrigin(origin);
+  if (!store.origins[key]) return;
+  store.origins[key].feedGranted = true;
+  saveFeeds();
+}
+
+/**
+ * Revoke feed access for an origin. Called on disconnect.
+ * Identity metadata (identityMode, publisherKeyIndex, feeds) is preserved.
+ * @param {string} origin
+ */
+function revokeFeedAccess(origin) {
+  const store = loadFeeds();
+  const key = normalizeOrigin(origin);
+  if (!store.origins[key]) return;
+  store.origins[key].feedGranted = false;
+  saveFeeds();
+}
+
+/**
  * Register IPC handlers for feed store.
  */
 function registerFeedStoreIpc() {
@@ -239,8 +279,9 @@ function registerFeedStoreIpc() {
     return hasIdentityMode(origin);
   });
 
-  // Idempotent: if the origin already has an identity mode set,
+  // Idempotent for identity: if the origin already has an identity mode set,
   // return the existing entry without allocating a new key index.
+  // Always grants feed access (feedGranted = true).
   ipcMain.handle(IPC.SWARM_SET_FEED_IDENTITY, (_event, origin, identityMode) => {
     if (!VALID_IDENTITY_MODES.includes(identityMode)) {
       throw new Error(`Invalid identity mode: ${identityMode}. Must be one of: ${VALID_IDENTITY_MODES.join(', ')}`);
@@ -248,14 +289,23 @@ function registerFeedStoreIpc() {
 
     const existing = getOriginEntry(origin);
     if (existing && existing.identityMode) {
-      return existing;
+      // Identity already set — just re-grant feed access
+      if (!existing.feedGranted) {
+        grantFeedAccess(origin);
+      }
+      return getOriginEntry(origin);
     }
 
     let publisherKeyIndex = null;
     if (identityMode === 'app-scoped') {
       publisherKeyIndex = allocatePublisherKeyIndex();
     }
-    return setOriginEntry(origin, { identityMode, publisherKeyIndex });
+    return setOriginEntry(origin, { identityMode, publisherKeyIndex, feedGranted: true });
+  });
+
+  ipcMain.handle(IPC.SWARM_REVOKE_FEED_ACCESS, (_event, origin) => {
+    revokeFeedAccess(origin);
+    return true;
   });
 
   log.info('[FeedStore] IPC handlers registered');
@@ -274,6 +324,9 @@ module.exports = {
   updateFeedReference,
   getAllFeeds,
   hasIdentityMode,
+  hasFeedGrant,
+  grantFeedAccess,
+  revokeFeedAccess,
   registerFeedStoreIpc,
   VALID_IDENTITY_MODES,
   _resetCache,
