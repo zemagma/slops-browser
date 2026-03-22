@@ -6,6 +6,7 @@
  */
 
 import { walletState, registerScreenHider } from './wallet-state.js';
+import { escapeHtml } from './wallet-utils.js';
 
 let screen;
 let backBtn;
@@ -102,6 +103,3 @@ function truncateOrigin(origin) {
   return origin.slice(0, 20) + '\u2026' + origin.slice(-17);
 }
 
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
