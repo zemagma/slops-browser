@@ -10,7 +10,7 @@
  * webview (window.ethereum) → renderer (this) → main (RPC/signing)
  */
 
-import { showDappConnect, getSelectedChainId, setSelectedChainId, updateConnectionBanner, showDappTxApproval, showDappSignApproval, updateSwarmConnectionBanner } from './wallet-ui.js';
+import { showDappConnect, getSelectedChainId, setSelectedChainId, updateConnectionBanner, showDappTxApproval, showDappSignApproval, showVaultUnlock, updateSwarmConnectionBanner } from './wallet-ui.js';
 
 // Feature flag state
 let identityWalletEnabled = false;
@@ -262,8 +262,16 @@ async function handleProviderRequest(webview, request) {
       // Need transaction approval
       result = await showDappTxApproval(webview, permissionKey, params[0]);
     } else if (method === 'personal_sign' || method === 'eth_signTypedData_v4') {
-      // Need signing approval
-      result = await showDappSignApproval(webview, permissionKey, method, params);
+      const signingAutoApproved = await window.dappPermissions.getSigningAutoApprove(permissionKey);
+      if (signingAutoApproved) {
+        const vaultStatus = await window.identity?.getStatus?.();
+        if (!vaultStatus?.isUnlocked) {
+          await showVaultUnlock(permissionKey);
+        }
+        result = await autoApproveSign(permissionKey, method, params);
+      } else {
+        result = await showDappSignApproval(webview, permissionKey, method, params);
+      }
     } else if (method === 'eth_sign') {
       // Deprecated and dangerous - reject
       throw { ...ERRORS.UNSUPPORTED_METHOD, message: 'eth_sign is deprecated for security reasons' };
@@ -283,6 +291,35 @@ async function handleProviderRequest(webview, request) {
     };
     sendProviderResponse(webview, id, null, err);
   }
+}
+
+/**
+ * Sign a message without showing the approval UI (auto-approved).
+ * Requires vault to be unlocked.
+ */
+async function autoApproveSign(permissionKey, method, params) {
+  const permission = await window.dappPermissions.getPermission(permissionKey);
+  if (!permission) {
+    throw { code: 4100, message: 'Unauthorized - not connected' };
+  }
+
+  const walletIndex = permission.walletIndex;
+  let signature;
+
+  if (method === 'personal_sign') {
+    const result = await window.wallet.signMessage(params[0], walletIndex);
+    if (!result.success) throw new Error(result.error || 'Signing failed');
+    signature = result.signature;
+  } else if (method === 'eth_signTypedData_v4') {
+    const result = await window.wallet.signTypedData(params[1], walletIndex);
+    if (!result.success) throw new Error(result.error || 'Signing failed');
+    signature = result.signature;
+  } else {
+    throw new Error(`Unsupported signing method: ${method}`);
+  }
+
+  await window.dappPermissions.updateLastUsed(permissionKey);
+  return signature;
 }
 
 /**

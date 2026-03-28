@@ -108,6 +108,7 @@ function grantPermission(origin, walletIndex, chainId) {
     lastUsed: now,
     walletIndex: walletIndex,
     chainId: chainId,
+    autoApprove: { signing: false, transactions: [] },
   };
 
   permissions[normalizedOrigin] = permission;
@@ -192,6 +193,40 @@ function updateWalletIndex(origin, walletIndex) {
 }
 
 /**
+ * Check if signing auto-approve is enabled for an origin.
+ * @param {string} origin
+ * @returns {boolean}
+ */
+function getSigningAutoApprove(origin) {
+  const permission = getPermission(origin);
+  return permission?.autoApprove?.signing === true;
+}
+
+/**
+ * Set signing auto-approve for an origin.
+ * @param {string} origin
+ * @param {boolean} enabled
+ * @returns {boolean} True if updated
+ */
+function setSigningAutoApprove(origin, enabled) {
+  const permissions = loadPermissions();
+  const key = normalizeOrigin(origin);
+
+  if (!permissions[key]) return false;
+
+  if (!permissions[key].autoApprove) {
+    permissions[key].autoApprove = { signing: false, transactions: [] };
+  }
+
+  permissions[key].autoApprove.signing = enabled;
+  permissionsCache = permissions;
+  savePermissions();
+
+  console.log(`[DAppPermissions] Signing auto-approve ${enabled ? 'enabled' : 'disabled'} for:`, key);
+  return true;
+}
+
+/**
  * Register IPC handlers for dApp permissions
  */
 function registerDappPermissionsIpc() {
@@ -215,6 +250,14 @@ function registerDappPermissionsIpc() {
     return updateLastUsed(origin, chainId);
   });
 
+  ipcMain.handle(IPC.DAPP_GET_SIGNING_AUTO_APPROVE, (_event, origin) => {
+    return getSigningAutoApprove(origin);
+  });
+
+  ipcMain.handle(IPC.DAPP_SET_SIGNING_AUTO_APPROVE, (_event, origin, enabled) => {
+    return setSigningAutoApprove(origin, enabled);
+  });
+
   console.log('[DAppPermissions] IPC handlers registered');
 }
 
@@ -226,6 +269,8 @@ module.exports = {
   getAllPermissions,
   updateLastUsed,
   updateWalletIndex,
+  getSigningAutoApprove,
+  setSigningAutoApprove,
   normalizeOrigin,
   registerDappPermissionsIpc,
 };

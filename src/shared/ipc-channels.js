@@ -151,6 +151,8 @@ module.exports = {
   DAPP_REVOKE_PERMISSION: 'dapp:revoke-permission',
   DAPP_GET_ALL_PERMISSIONS: 'dapp:get-all-permissions',
   DAPP_UPDATE_LAST_USED: 'dapp:update-last-used',
+  DAPP_GET_SIGNING_AUTO_APPROVE: 'dapp:get-signing-auto-approve',
+  DAPP_SET_SIGNING_AUTO_APPROVE: 'dapp:set-signing-auto-approve',
 
   // dApp Provider (webview ↔ renderer ↔ main)
   DAPP_PROVIDER_REQUEST: 'dapp:provider-request',

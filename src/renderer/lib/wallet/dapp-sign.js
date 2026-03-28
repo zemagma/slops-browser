@@ -23,6 +23,7 @@ let dappSignPasswordSubmit;
 let dappSignError;
 let dappSignRejectBtn;
 let dappSignApproveBtn;
+let dappSignAutoApproveCheckbox;
 
 // Local state
 let dappSignPending = null;
@@ -43,6 +44,7 @@ export function initDappSign() {
   dappSignError = document.getElementById('dapp-sign-error');
   dappSignRejectBtn = document.getElementById('dapp-sign-reject');
   dappSignApproveBtn = document.getElementById('dapp-sign-approve');
+  dappSignAutoApproveCheckbox = document.getElementById('dapp-sign-auto-approve');
 
   // Register screen hider
   registerScreenHider(() => dappSignScreen?.classList.add('hidden'));
@@ -103,6 +105,7 @@ export async function showDappSignApproval(webview, permissionKey, method, param
 
   return new Promise((resolve, reject) => {
     dappSignPending = { permissionKey, walletIndex: permission.walletIndex, method, params, resolve, reject, webview };
+    if (dappSignAutoApproveCheckbox) dappSignAutoApproveCheckbox.checked = false;
 
     if (dappSignSite) {
       dappSignSite.textContent = permissionKey;
@@ -287,7 +290,7 @@ async function handleDappSignPasswordUnlock() {
 async function approveDappSign() {
   if (!dappSignPending) return;
 
-  const { walletIndex, method, params, resolve } = dappSignPending;
+  const { permissionKey, walletIndex, method, params, resolve } = dappSignPending;
 
   try {
     if (dappSignApproveBtn) {
@@ -311,6 +314,11 @@ async function approveDappSign() {
       signature = result.signature;
     } else {
       throw new Error(`Unsupported signing method: ${method}`);
+    }
+
+    if (dappSignAutoApproveCheckbox?.checked && permissionKey) {
+      await window.dappPermissions.setSigningAutoApprove(permissionKey, true);
+      console.log('[WalletUI] Signing auto-approve enabled for:', permissionKey);
     }
 
     console.log('[WalletUI] dApp message signed');
