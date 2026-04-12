@@ -1,6 +1,6 @@
 const mockCreateFeedManifest = jest.fn();
 const mockMakeFeedWriter = jest.fn();
-const mockWriterUpload = jest.fn();
+const mockMakeFeedReader = jest.fn();
 const mockGetPostageBatches = jest.fn();
 
 // Minimal stand-ins for bee-js typed bytes used in assertions
@@ -17,7 +17,7 @@ class MockTopic {
 }
 
 class MockEthAddress {
-  constructor(hex) { this._hex = hex; }
+  constructor(hex) { this._hex = typeof hex === 'string' ? hex.replace(/^0x/, '') : hex; }
   toHex() { return this._hex; }
   toChecksum() { return `0x${this._hex}`; }
 }
@@ -36,14 +36,21 @@ class MockPrivateKey {
   publicKey() { return new MockPublicKey(this._addr); }
 }
 
+class MockFeedIndex {
+  constructor(value) { this._value = BigInt(value); }
+  toBigInt() { return this._value; }
+}
+
 jest.mock('@ethersphere/bee-js', () => ({
   Bee: jest.fn().mockImplementation(() => ({
     createFeedManifest: mockCreateFeedManifest,
     makeFeedWriter: mockMakeFeedWriter,
+    makeFeedReader: mockMakeFeedReader,
     getPostageBatches: mockGetPostageBatches,
   })),
   PrivateKey: MockPrivateKey,
   Topic: MockTopic,
+  EthAddress: MockEthAddress,
 }));
 
 jest.mock('../service-registry', () => ({
@@ -55,11 +62,12 @@ jest.mock('electron-log', () => ({
   error: jest.fn(),
 }));
 
-const { buildTopicString, createFeed, updateFeed } = require('./feed-service');
+const { buildTopicString, createFeed, updateFeed, writeFeedPayload, readFeedPayload, withWriteLock, feedIndexToNumber } = require('./feed-service');
 
 const TEST_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
 const MOCK_MANIFEST_REF = 'ff'.repeat(32);
 const MOCK_BATCH_ID = 'aa'.repeat(32);
+const MOCK_OWNER = '0x' + 'ab'.repeat(20);
 
 function mockBatchForAutoSelect() {
   mockGetPostageBatches.mockResolvedValue([{
@@ -70,10 +78,37 @@ function mockBatchForAutoSelect() {
   }]);
 }
 
+function createMockWriter({ downloadPayloadResult, uploadPayloadFn, uploadReferenceFn, downloadPayloadFn } = {}) {
+  const writer = {
+    upload: jest.fn().mockResolvedValue(undefined),
+    uploadPayload: uploadPayloadFn || jest.fn().mockResolvedValue(undefined),
+    uploadReference: uploadReferenceFn || jest.fn().mockResolvedValue(undefined),
+    downloadPayload: downloadPayloadFn || jest.fn(),
+  };
+  if (downloadPayloadResult !== undefined) {
+    writer.downloadPayload.mockResolvedValue(downloadPayloadResult);
+  } else {
+    // Default: empty feed
+    writer.downloadPayload.mockRejectedValue(new Error('not found'));
+  }
+  return writer;
+}
+
+function createMockReader({ downloadPayloadResult, downloadPayloadFn } = {}) {
+  const reader = {
+    downloadPayload: downloadPayloadFn || jest.fn(),
+  };
+  if (downloadPayloadResult !== undefined) {
+    reader.downloadPayload.mockResolvedValue(downloadPayloadResult);
+  } else {
+    reader.downloadPayload.mockRejectedValue(new Error('not found'));
+  }
+  return reader;
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   topicCounter = 0;
-  mockMakeFeedWriter.mockReturnValue({ upload: mockWriterUpload });
 });
 
 describe('feed-service', () => {
@@ -88,6 +123,14 @@ describe('feed-service', () => {
 
     test('works with bzz:// origins', () => {
       expect(buildTopicString('bzz://abc123', 'feed')).toBe('bzz://abc123/feed');
+    });
+  });
+
+  describe('feedIndexToNumber', () => {
+    test('converts FeedIndex to number', () => {
+      expect(feedIndexToNumber(new MockFeedIndex(0))).toBe(0);
+      expect(feedIndexToNumber(new MockFeedIndex(42))).toBe(42);
+      expect(feedIndexToNumber(new MockFeedIndex(1000))).toBe(1000);
     });
   });
 
@@ -175,44 +218,75 @@ describe('feed-service', () => {
   describe('updateFeed', () => {
     const CONTENT_REF = 'cc'.repeat(32);
 
-    test('calls makeFeedWriter with correct topic and key', async () => {
-      mockWriterUpload.mockResolvedValue(undefined);
+    test('calls uploadReference (not deprecated upload)', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
       mockBatchForAutoSelect();
 
       await updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF);
 
-      expect(mockMakeFeedWriter).toHaveBeenCalledTimes(1);
-      const [topic, privateKey] = mockMakeFeedWriter.mock.calls[0];
-      expect(topic).toBeInstanceOf(MockTopic);
-      expect(privateKey.publicKey().address().toHex()).toBeTruthy();
+      expect(writer.uploadReference).toHaveBeenCalledTimes(1);
+      expect(writer.upload).not.toHaveBeenCalled();
     });
 
-    test('calls writer.upload with batchId and reference', async () => {
-      mockWriterUpload.mockResolvedValue(undefined);
+    test('passes batchId and reference to uploadReference', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
       mockBatchForAutoSelect();
 
       await updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF);
 
-      expect(mockWriterUpload).toHaveBeenCalledTimes(1);
-      const [batchId, ref] = mockWriterUpload.mock.calls[0];
+      const [batchId, ref, options] = writer.uploadReference.mock.calls[0];
       expect(typeof batchId).toBe('string');
       expect(ref).toBe(CONTENT_REF);
+      expect(options).toHaveProperty('index', 0);
     });
 
-    test('returns success', async () => {
-      mockWriterUpload.mockResolvedValue(undefined);
+    test('returns index', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
       mockBatchForAutoSelect();
 
       const result = await updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF);
-      expect(result).toEqual({ success: true });
+
+      expect(typeof result.index).toBe('number');
+    });
+
+    test('resolves next index from non-empty feed', async () => {
+      const writer = createMockWriter({
+        downloadPayloadResult: {
+          payload: Buffer.from('data'),
+          feedIndex: new MockFeedIndex(5),
+          feedIndexNext: new MockFeedIndex(6),
+        },
+      });
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const result = await updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF);
+
+      expect(result.index).toBe(6);
+      const [, , options] = writer.uploadReference.mock.calls[0];
+      expect(options.index).toBe(6);
+    });
+
+    test('defaults to index 0 on empty feed', async () => {
+      const writer = createMockWriter(); // default: downloadPayload rejects
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const result = await updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF);
+
+      expect(result.index).toBe(0);
     });
 
     test('uses explicit batchId when provided', async () => {
-      mockWriterUpload.mockResolvedValue(undefined);
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
 
       await updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF, 'explicit_batch');
 
-      const [batchId] = mockWriterUpload.mock.calls[0];
+      const [batchId] = writer.uploadReference.mock.calls[0];
       expect(batchId).toBe('explicit_batch');
       expect(mockGetPostageBatches).not.toHaveBeenCalled();
     });
@@ -225,11 +299,323 @@ describe('feed-service', () => {
     });
 
     test('propagates bee-js errors', async () => {
-      mockWriterUpload.mockRejectedValue(new Error('network error'));
+      const writer = createMockWriter();
+      writer.uploadReference.mockRejectedValue(new Error('network error'));
+      mockMakeFeedWriter.mockReturnValue(writer);
       mockBatchForAutoSelect();
 
       await expect(updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF))
         .rejects.toThrow('network error');
+    });
+  });
+
+  describe('writeFeedPayload', () => {
+    test('calls uploadPayload with data', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'hello world');
+
+      expect(writer.uploadPayload).toHaveBeenCalledTimes(1);
+      const [batchId, data, options] = writer.uploadPayload.mock.calls[0];
+      expect(typeof batchId).toBe('string');
+      expect(data).toBe('hello world');
+      expect(options).toHaveProperty('index', 0);
+    });
+
+    test('auto-increments on empty feed (index 0)', async () => {
+      const writer = createMockWriter(); // downloadPayload rejects → empty feed
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const result = await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data');
+
+      expect(result.index).toBe(0);
+    });
+
+    test('auto-increments on non-empty feed', async () => {
+      const writer = createMockWriter({
+        downloadPayloadResult: {
+          payload: Buffer.from('prev'),
+          feedIndex: new MockFeedIndex(3),
+          feedIndexNext: new MockFeedIndex(4),
+        },
+      });
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const result = await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data');
+
+      expect(result.index).toBe(4);
+      const [, , options] = writer.uploadPayload.mock.calls[0];
+      expect(options.index).toBe(4);
+    });
+
+    test('uses explicit index when provided', async () => {
+      const writer = createMockWriter();
+      // downloadPayload with { index: 10 } throws (not found) — index available
+      writer.downloadPayload.mockRejectedValue(new Error('not found'));
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const result = await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data', { index: 10 });
+
+      expect(result.index).toBe(10);
+      const [, , options] = writer.uploadPayload.mock.calls[0];
+      expect(options.index).toBe(10);
+    });
+
+    test('rejects explicit index that already has an entry (overwrite protection)', async () => {
+      const writer = createMockWriter();
+      // downloadPayload with { index: 5 } succeeds → entry exists
+      writer.downloadPayload.mockResolvedValue({
+        payload: Buffer.from('existing'),
+        feedIndex: new MockFeedIndex(5),
+      });
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await expect(writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data', { index: 5 }))
+        .rejects.toThrow('Feed entry already exists at index 5');
+
+      // uploadPayload should NOT have been called
+      expect(writer.uploadPayload).not.toHaveBeenCalled();
+    });
+
+    test('overwrite protection error has reason property', async () => {
+      const writer = createMockWriter();
+      writer.downloadPayload.mockResolvedValue({
+        payload: Buffer.from('existing'),
+        feedIndex: new MockFeedIndex(0),
+      });
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      try {
+        await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data', { index: 0 });
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(err.reason).toBe('index_already_exists');
+      }
+    });
+
+    test('auto-selects batch', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data');
+
+      expect(mockGetPostageBatches).toHaveBeenCalled();
+    });
+
+    test('uses explicit batchId when provided', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
+
+      await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data', { batchId: 'my_batch' });
+
+      const [batchId] = writer.uploadPayload.mock.calls[0];
+      expect(batchId).toBe('my_batch');
+    });
+
+    test('throws when no usable batch available', async () => {
+      mockGetPostageBatches.mockResolvedValue([]);
+
+      await expect(writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data'))
+        .rejects.toThrow('No usable postage batch');
+    });
+
+    test('propagates bee-js upload errors', async () => {
+      const writer = createMockWriter();
+      writer.uploadPayload.mockRejectedValue(new Error('chunk too large'));
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await expect(writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'x'.repeat(10000)))
+        .rejects.toThrow('chunk too large');
+    });
+
+    test('accepts Buffer data', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const buf = Buffer.from('binary data');
+      await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', buf);
+
+      const [, data] = writer.uploadPayload.mock.calls[0];
+      expect(data).toBe(buf);
+    });
+  });
+
+  describe('readFeedPayload', () => {
+    test('reads latest entry when no index provided', async () => {
+      const reader = createMockReader({
+        downloadPayloadResult: {
+          payload: Buffer.from('latest data'),
+          feedIndex: new MockFeedIndex(3),
+          feedIndexNext: new MockFeedIndex(4),
+        },
+      });
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      const result = await readFeedPayload(MOCK_OWNER, new MockTopic('ab'.repeat(32)));
+
+      expect(reader.downloadPayload).toHaveBeenCalledWith(undefined);
+      expect(result.payload).toEqual(Buffer.from('latest data'));
+      expect(result.index).toBe(3);
+      expect(result.nextIndex).toBe(4);
+    });
+
+    test('reads specific index when provided', async () => {
+      const reader = createMockReader({
+        downloadPayloadResult: {
+          payload: Buffer.from('entry 2'),
+          feedIndex: new MockFeedIndex(2),
+          feedIndexNext: undefined,
+        },
+      });
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      const result = await readFeedPayload(MOCK_OWNER, new MockTopic('ab'.repeat(32)), 2);
+
+      expect(reader.downloadPayload).toHaveBeenCalledWith({ index: 2 });
+      expect(result.payload).toEqual(Buffer.from('entry 2'));
+      expect(result.index).toBe(2);
+      expect(result.nextIndex).toBeNull();
+    });
+
+    test('passes Topic object directly to makeFeedReader', async () => {
+      const topic = new MockTopic('cd'.repeat(32));
+      const reader = createMockReader({
+        downloadPayloadResult: {
+          payload: Buffer.from('data'),
+          feedIndex: new MockFeedIndex(0),
+        },
+      });
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      await readFeedPayload(MOCK_OWNER, topic);
+
+      expect(mockMakeFeedReader).toHaveBeenCalledWith(topic, expect.any(MockEthAddress));
+    });
+
+    test('throws feed_empty on empty feed (latest read)', async () => {
+      const reader = createMockReader(); // downloadPayload rejects
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      try {
+        await readFeedPayload(MOCK_OWNER, new MockTopic('ab'.repeat(32)));
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(err.reason).toBe('feed_empty');
+        expect(err.message).toContain('empty');
+      }
+    });
+
+    test('throws entry_not_found on missing index (indexed read)', async () => {
+      const reader = createMockReader(); // downloadPayload rejects
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      try {
+        await readFeedPayload(MOCK_OWNER, new MockTopic('ab'.repeat(32)), 99);
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(err.reason).toBe('entry_not_found');
+        expect(err.message).toContain('index 99');
+      }
+    });
+
+    test('constructs EthAddress from owner string', async () => {
+      const reader = createMockReader({
+        downloadPayloadResult: {
+          payload: Buffer.from('data'),
+          feedIndex: new MockFeedIndex(0),
+        },
+      });
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      await readFeedPayload('0x1234567890abcdef1234567890abcdef12345678', new MockTopic('ab'.repeat(32)));
+
+      const [, ownerArg] = mockMakeFeedReader.mock.calls[0];
+      expect(ownerArg).toBeInstanceOf(MockEthAddress);
+    });
+  });
+
+  describe('withWriteLock', () => {
+    test('serializes writes to the same topic', async () => {
+      const order = [];
+
+      const p1 = withWriteLock('topic-a', async () => {
+        order.push('start-1');
+        await new Promise(r => setTimeout(r, 50));
+        order.push('end-1');
+        return 'result-1';
+      });
+
+      const p2 = withWriteLock('topic-a', async () => {
+        order.push('start-2');
+        return 'result-2';
+      });
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+
+      expect(r1).toBe('result-1');
+      expect(r2).toBe('result-2');
+      // start-2 must come after end-1
+      expect(order).toEqual(['start-1', 'end-1', 'start-2']);
+    });
+
+    test('allows parallel writes to different topics', async () => {
+      const order = [];
+
+      const p1 = withWriteLock('topic-a', async () => {
+        order.push('start-a');
+        await new Promise(r => setTimeout(r, 50));
+        order.push('end-a');
+      });
+
+      const p2 = withWriteLock('topic-b', async () => {
+        order.push('start-b');
+        await new Promise(r => setTimeout(r, 10));
+        order.push('end-b');
+      });
+
+      await Promise.all([p1, p2]);
+
+      // Both should start before either ends
+      expect(order.indexOf('start-a')).toBeLessThan(order.indexOf('end-a'));
+      expect(order.indexOf('start-b')).toBeLessThan(order.indexOf('end-b'));
+      // b should finish before a (shorter delay)
+      expect(order.indexOf('end-b')).toBeLessThan(order.indexOf('end-a'));
+    });
+
+    test('failed write does not block subsequent writes', async () => {
+      const p1 = withWriteLock('topic-a', async () => {
+        throw new Error('write failed');
+      });
+
+      // First write fails
+      await expect(p1).rejects.toThrow('write failed');
+
+      // Second write should still execute
+      const result = await withWriteLock('topic-a', async () => 'recovered');
+      expect(result).toBe('recovered');
+    });
+
+    test('cleans up lock map when chain is idle', async () => {
+      // Access the internal map via module
+      await withWriteLock('cleanup-test', async () => 'done');
+
+      // The lock for 'cleanup-test' should have been cleaned up
+      // (We can't access writeLocks directly, but we can verify the next
+      // call doesn't wait on anything)
+      const start = Date.now();
+      await withWriteLock('cleanup-test', async () => 'immediate');
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(20);
     });
   });
 });

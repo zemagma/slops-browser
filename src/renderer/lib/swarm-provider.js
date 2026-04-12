@@ -81,7 +81,10 @@ async function handleSwarmRequest(webview, request) {
       }
 
       result = await executeWithPermission(method, params, permissionKey);
-    } else if (method === 'swarm_createFeed' || method === 'swarm_updateFeed') {
+    } else if (method === 'swarm_readFeedEntry') {
+      // Permission checked inside executeWithPermission — no separate requirePermission needed
+      result = await executeWithPermission(method, params, permissionKey);
+    } else if (method === 'swarm_createFeed' || method === 'swarm_updateFeed' || method === 'swarm_writeFeedEntry') {
       await requirePermission(permissionKey);
 
       const [hasFeedAccess, vaultStatus] = await Promise.all([

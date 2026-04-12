@@ -627,7 +627,7 @@ try {
           return new Promise((resolve, reject) => {
             pendingRequests.set(id, { resolve, reject });
             window.postMessage({ type: 'FREEDOM_SWARM_REQUEST', id, method, params: params || {} }, '*');
-            const timeout = method.startsWith('swarm_publish') ? 300000 : 60000;
+            const timeout = (method.startsWith('swarm_publish') || method === 'swarm_writeFeedEntry' || method === 'swarm_updateFeed') ? 300000 : 60000;
             setTimeout(() => {
               if (pendingRequests.has(id)) {
                 pendingRequests.delete(id);
@@ -644,6 +644,8 @@ try {
         getUploadStatus(params) { return this.request({ method: 'swarm_getUploadStatus', params: params }); },
         createFeed(params) { return this.request({ method: 'swarm_createFeed', params: params }); },
         updateFeed(params) { return this.request({ method: 'swarm_updateFeed', params: params }); },
+        writeFeedEntry(params) { return this.request({ method: 'swarm_writeFeedEntry', params: params }); },
+        readFeedEntry(params) { return this.request({ method: 'swarm_readFeedEntry', params: params }); },
 
         on(event, handler) { if (eventListeners[event]) eventListeners[event].push(handler); return this; },
         removeListener(event, handler) {

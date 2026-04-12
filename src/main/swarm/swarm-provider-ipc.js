@@ -26,7 +26,8 @@ const IPC = require('../../shared/ipc-channels');
 const { normalizeOrigin } = require('../../shared/origin-utils');
 const { getPermission } = require('./swarm-permissions');
 const { publishData, publishFilesFromContent, getUploadStatus } = require('./publish-service');
-const { createFeed, updateFeed, buildTopicString } = require('./feed-service');
+const { createFeed, updateFeed, writeFeedPayload, readFeedPayload, buildTopicString } = require('./feed-service');
+const { Topic } = require('@ethersphere/bee-js');
 const { getOriginEntry, getFeed, setFeed, updateFeedReference, hasFeedGrant } = require('./feed-store');
 const { addEntry, updateEntry } = require('./publish-history');
 const { getBeeApiUrl } = require('../service-registry');
@@ -57,6 +58,8 @@ const KNOWN_METHODS = [
   'swarm_getUploadStatus',
   'swarm_createFeed',
   'swarm_updateFeed',
+  'swarm_writeFeedEntry',
+  'swarm_readFeedEntry',
 ];
 
 // Tag ownership: tagUid → origin. Session-scoped, not persisted.
@@ -128,6 +131,16 @@ async function executeSwarmMethod(method, params, origin) {
       const result = await handleUpdateFeed(params, normalizedOrigin);
       if (result.result) resetVaultAutoLockTimer();
       return result;
+    }
+
+    if (method === 'swarm_writeFeedEntry') {
+      const result = await handleWriteFeedEntry(params, normalizedOrigin);
+      if (result.result) resetVaultAutoLockTimer();
+      return result;
+    }
+
+    if (method === 'swarm_readFeedEntry') {
+      return handleReadFeedEntry(params, normalizedOrigin);
     }
 
     return { error: ERRORS.INTERNAL_ERROR };
@@ -596,24 +609,239 @@ async function handleUpdateFeed(params, origin) {
   });
 
   try {
-    await updateFeed(signerKey, topicString, reference);
+    const updateResult = await updateFeed(signerKey, topicString, reference);
 
     updateFeedReference(origin, feedId, reference);
     updateEntry(historyEntry.id, { status: 'completed', reference });
 
-    log.info(`[SwarmProvider] updateFeed succeeded for ${origin}: feed=${feedId}, ref=${reference}`);
+    log.info(`[SwarmProvider] updateFeed succeeded for ${origin}: feed=${feedId}, ref=${reference}, index=${updateResult.index}`);
 
     return {
       result: {
         feedId,
         reference,
         bzzUrl: `bzz://${existingFeed.manifestReference}`,
+        index: updateResult.index,
       },
     };
   } catch (err) {
     updateEntry(historyEntry.id, { status: 'failed' });
     log.error(`[SwarmProvider] updateFeed failed for ${origin}:`, err.message);
     return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+}
+
+/**
+ * Handle swarm_writeFeedEntry: validate, check capability, write payload to feed.
+ */
+async function handleWriteFeedEntry(params, origin) {
+  if (!params || typeof params !== 'object') {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'params is required', data: { reason: 'invalid_params' } } };
+  }
+
+  const { name, data, index } = params;
+
+  const nameResult = validateFeedName(name);
+  if (!nameResult.valid) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: nameResult.message, data: { reason: 'invalid_feed_name' } } };
+  }
+
+  if (data === undefined || data === null) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'data is required', data: { reason: 'invalid_params' } } };
+  }
+
+  // Accept string or binary
+  let payload = data;
+  if (typeof payload !== 'string') {
+    payload = normalizeBytes(payload);
+    if (!payload) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'data must be a string, Uint8Array, or ArrayBuffer', data: { reason: 'invalid_params' } } };
+    }
+  }
+
+  if (index !== undefined && index !== null) {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'index must be a non-negative integer', data: { reason: 'invalid_params' } } };
+    }
+  }
+
+  if (!hasFeedGrant(origin)) {
+    return { error: { ...ERRORS.UNAUTHORIZED, message: 'Feed access not granted.', data: { reason: 'feed_not_granted' } } };
+  }
+
+  const originEntry = getOriginEntry(origin);
+
+  const existingFeed = getFeed(origin, name);
+  if (!existingFeed) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: `Feed not found: ${name}. Create it with createFeed first.`, data: { reason: 'feed_not_found' } } };
+  }
+
+  const preFlight = await checkSwarmPreFlight();
+  if (!preFlight.ok) {
+    return { error: { ...ERRORS.NODE_UNAVAILABLE, message: `Node not available: ${preFlight.reason}`, data: { reason: preFlight.reason } } };
+  }
+
+  let signerKey;
+  try {
+    signerKey = await resolveSignerKey(originEntry);
+  } catch (err) {
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+
+  const topicString = buildTopicString(origin, name);
+
+  const historyEntry = addEntry({
+    type: 'feed-entry',
+    name,
+    status: 'uploading',
+  });
+
+  try {
+    const result = await writeFeedPayload(signerKey, topicString, payload, { index });
+
+    updateEntry(historyEntry.id, { status: 'completed' });
+    log.info(`[SwarmProvider] writeFeedEntry succeeded for ${origin}: feed=${name}, index=${result.index}`);
+
+    return { result: { index: result.index } };
+  } catch (err) {
+    updateEntry(historyEntry.id, { status: 'failed' });
+
+    // Translate known error reasons to appropriate error codes
+    if (err.reason === 'index_already_exists') {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: err.message, data: { reason: 'index_already_exists' } } };
+    }
+
+    // Translate SOC payload size errors
+    if (err.message && (err.message.includes('too large') || err.message.includes('payload size'))) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'Payload exceeds maximum SOC size', data: { reason: 'payload_too_large' } } };
+    }
+
+    log.error(`[SwarmProvider] writeFeedEntry failed for ${origin}:`, err.message);
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+}
+
+/**
+ * Handle swarm_readFeedEntry: validate, resolve topic/owner, read feed entry.
+ * Does NOT require feed grant or vault — read-only operation.
+ */
+async function handleReadFeedEntry(params, origin) {
+  if (!params || typeof params !== 'object') {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'params is required', data: { reason: 'invalid_params' } } };
+  }
+
+  const { topic: topicHex, name, owner, index } = params;
+
+  // Exactly one of topic or name
+  const hasTopic = topicHex !== undefined && topicHex !== null;
+  const hasName = name !== undefined && name !== null;
+
+  if (hasTopic && hasName) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'Provide either topic or name, not both', data: { reason: 'invalid_params' } } };
+  }
+  if (!hasTopic && !hasName) {
+    return { error: { ...ERRORS.INVALID_PARAMS, message: 'Either topic or name is required', data: { reason: 'invalid_params' } } };
+  }
+
+  // Validate index
+  if (index !== undefined && index !== null) {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'index must be a non-negative integer', data: { reason: 'invalid_params' } } };
+    }
+  }
+
+  // Resolve topic and owner
+  let resolvedTopic;
+  let resolvedOwner;
+
+  if (hasTopic) {
+    // Raw topic hex — construct Topic directly (no hashing)
+    if (typeof topicHex !== 'string' || !/^[0-9a-fA-F]{64}$/.test(topicHex)) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'topic must be a 64-character hex string', data: { reason: 'invalid_topic' } } };
+    }
+    resolvedTopic = new Topic(topicHex);
+
+    // owner is required with topic
+    if (!owner || typeof owner !== 'string') {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'owner is required when using topic', data: { reason: 'invalid_owner' } } };
+    }
+    resolvedOwner = owner.replace(/^0x/, '');
+    if (!/^[0-9a-fA-F]{40}$/.test(resolvedOwner)) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: 'owner must be a valid 40-character hex address', data: { reason: 'invalid_owner' } } };
+    }
+  } else {
+    // Feed name — derive topic via hashing
+    const nameResult = validateFeedName(name);
+    if (!nameResult.valid) {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: nameResult.message, data: { reason: 'invalid_feed_name' } } };
+    }
+
+    const topicString = buildTopicString(origin, name);
+    resolvedTopic = Topic.fromString(topicString);
+
+    if (owner) {
+      // Owner explicitly provided with name
+      resolvedOwner = typeof owner === 'string' ? owner.replace(/^0x/, '') : '';
+      if (!/^[0-9a-fA-F]{40}$/.test(resolvedOwner)) {
+        return { error: { ...ERRORS.INVALID_PARAMS, message: 'owner must be a valid 40-character hex address', data: { reason: 'invalid_owner' } } };
+      }
+    } else {
+      // Owner inferred from local feed store
+      const existingFeed = getFeed(origin, name);
+      if (!existingFeed || !existingFeed.owner) {
+        return { error: { ...ERRORS.INVALID_PARAMS, message: `Feed not found: ${name}. Create it first or provide owner explicitly.`, data: { reason: 'feed_not_found' } } };
+      }
+      resolvedOwner = existingFeed.owner.replace(/^0x/, '');
+    }
+  }
+
+  // Read-only pre-flight: just check Bee API is reachable
+  const reachable = await checkBeeReachable();
+  if (!reachable.ok) {
+    return { error: { ...ERRORS.NODE_UNAVAILABLE, message: `Node not available: ${reachable.reason}`, data: { reason: reachable.reason } } };
+  }
+
+  try {
+    const result = await readFeedPayload(resolvedOwner, resolvedTopic, index);
+
+    const base64Data = result.payload.toString('base64');
+
+    return {
+      result: {
+        data: base64Data,
+        encoding: 'base64',
+        index: result.index,
+        nextIndex: result.nextIndex,
+      },
+    };
+  } catch (err) {
+    if (err.reason === 'feed_empty') {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: err.message, data: { reason: 'feed_empty' } } };
+    }
+    if (err.reason === 'entry_not_found') {
+      return { error: { ...ERRORS.INVALID_PARAMS, message: err.message, data: { reason: 'entry_not_found' } } };
+    }
+    log.error(`[SwarmProvider] readFeedEntry failed for ${origin}:`, err.message);
+    return { error: { ...ERRORS.INTERNAL_ERROR, message: err.message } };
+  }
+}
+
+/**
+ * Read-only pre-flight: is the Bee HTTP API reachable?
+ * Intentionally separate from checkSwarmPreFlight — reads don't need
+ * mode, readiness, or stamp checks.
+ * @returns {{ ok: boolean, reason?: string }}
+ */
+async function checkBeeReachable() {
+  const beeUrl = getBeeApiUrl();
+  if (!beeUrl) return { ok: false, reason: 'node-stopped' };
+  try {
+    const res = await fetch(`${beeUrl}/node`);
+    if (!res.ok) return { ok: false, reason: 'node-stopped' };
+    await res.json(); // consume response body
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'node-stopped' };
   }
 }
 
@@ -680,6 +908,7 @@ module.exports = {
   registerSwarmProviderIpc,
   executeSwarmMethod,
   checkSwarmPreFlight,
+  checkBeeReachable,
   validateVirtualPath,
   validateFeedName,
   clearTagOwnership,
