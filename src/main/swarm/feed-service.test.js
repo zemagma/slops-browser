@@ -41,6 +41,18 @@ class MockFeedIndex {
   toBigInt() { return this._value; }
 }
 
+// Stand-in for bee-js BeeResponseError — used for error discrimination
+class MockBeeResponseError extends Error {
+  constructor(status, message = 'Bee response error') {
+    super(message);
+    this.status = status;
+  }
+}
+
+function make404() {
+  return new MockBeeResponseError(404, 'Not Found');
+}
+
 jest.mock('@ethersphere/bee-js', () => ({
   Bee: jest.fn().mockImplementation(() => ({
     createFeedManifest: mockCreateFeedManifest,
@@ -51,6 +63,7 @@ jest.mock('@ethersphere/bee-js', () => ({
   PrivateKey: MockPrivateKey,
   Topic: MockTopic,
   EthAddress: MockEthAddress,
+  BeeResponseError: MockBeeResponseError,
 }));
 
 jest.mock('../service-registry', () => ({
@@ -62,7 +75,7 @@ jest.mock('electron-log', () => ({
   error: jest.fn(),
 }));
 
-const { buildTopicString, createFeed, updateFeed, writeFeedPayload, readFeedPayload, withWriteLock, feedIndexToNumber } = require('./feed-service');
+const { buildTopicString, createFeed, updateFeed, writeFeedPayload, readFeedPayload, withWriteLock, feedIndexToNumber, isNotFoundError } = require('./feed-service');
 
 const TEST_PRIVATE_KEY = '0x' + 'ab'.repeat(32);
 const MOCK_MANIFEST_REF = 'ff'.repeat(32);
@@ -88,8 +101,8 @@ function createMockWriter({ downloadPayloadResult, uploadPayloadFn, uploadRefere
   if (downloadPayloadResult !== undefined) {
     writer.downloadPayload.mockResolvedValue(downloadPayloadResult);
   } else {
-    // Default: empty feed
-    writer.downloadPayload.mockRejectedValue(new Error('not found'));
+    // Default: empty feed (BeeResponseError 404)
+    writer.downloadPayload.mockRejectedValue(make404());
   }
   return writer;
 }
@@ -101,7 +114,7 @@ function createMockReader({ downloadPayloadResult, downloadPayloadFn } = {}) {
   if (downloadPayloadResult !== undefined) {
     reader.downloadPayload.mockResolvedValue(downloadPayloadResult);
   } else {
-    reader.downloadPayload.mockRejectedValue(new Error('not found'));
+    reader.downloadPayload.mockRejectedValue(make404());
   }
   return reader;
 }
@@ -123,6 +136,28 @@ describe('feed-service', () => {
 
     test('works with bzz:// origins', () => {
       expect(buildTopicString('bzz://abc123', 'feed')).toBe('bzz://abc123/feed');
+    });
+  });
+
+  describe('isNotFoundError', () => {
+    test('returns true for BeeResponseError with status 404', () => {
+      expect(isNotFoundError(new MockBeeResponseError(404))).toBe(true);
+    });
+
+    test('returns true for BeeResponseError with status 500', () => {
+      expect(isNotFoundError(new MockBeeResponseError(500))).toBe(true);
+    });
+
+    test('returns false for BeeResponseError with other status', () => {
+      expect(isNotFoundError(new MockBeeResponseError(503))).toBe(false);
+    });
+
+    test('returns false for plain Error', () => {
+      expect(isNotFoundError(new Error('network timeout'))).toBe(false);
+    });
+
+    test('returns false for TypeError', () => {
+      expect(isNotFoundError(new TypeError('cannot read'))).toBe(false);
     });
   });
 
@@ -307,6 +342,16 @@ describe('feed-service', () => {
       await expect(updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF))
         .rejects.toThrow('network error');
     });
+
+    test('propagates non-404 errors from resolveNextIndex (does not default to 0)', async () => {
+      const writer = createMockWriter();
+      writer.downloadPayload.mockRejectedValue(new Error('network timeout'));
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await expect(updateFeed(TEST_PRIVATE_KEY, 'myapp.eth/blog', CONTENT_REF))
+        .rejects.toThrow('network timeout');
+    });
   });
 
   describe('writeFeedPayload', () => {
@@ -354,8 +399,8 @@ describe('feed-service', () => {
 
     test('uses explicit index when provided', async () => {
       const writer = createMockWriter();
-      // downloadPayload with { index: 10 } throws (not found) — index available
-      writer.downloadPayload.mockRejectedValue(new Error('not found'));
+      // downloadPayload with { index: 10 } throws 404 — index available
+      writer.downloadPayload.mockRejectedValue(make404());
       mockMakeFeedWriter.mockReturnValue(writer);
       mockBatchForAutoSelect();
 
@@ -435,6 +480,40 @@ describe('feed-service', () => {
 
       await expect(writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'x'.repeat(10000)))
         .rejects.toThrow('chunk too large');
+    });
+
+    test('propagates non-404 errors during overwrite check (does not treat as free index)', async () => {
+      const writer = createMockWriter();
+      writer.downloadPayload.mockRejectedValue(new Error('network timeout'));
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await expect(writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data', { index: 5 }))
+        .rejects.toThrow('network timeout');
+
+      expect(writer.uploadPayload).not.toHaveBeenCalled();
+    });
+
+    test('propagates non-404 errors during auto-increment (does not default to 0)', async () => {
+      const writer = createMockWriter();
+      writer.downloadPayload.mockRejectedValue(new Error('Bee internal error'));
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      await expect(writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', 'data'))
+        .rejects.toThrow('Bee internal error');
+    });
+
+    test('estimates batch size from actual payload size', async () => {
+      const writer = createMockWriter();
+      mockMakeFeedWriter.mockReturnValue(writer);
+      mockBatchForAutoSelect();
+
+      const largePayload = 'x'.repeat(50000);
+      await writeFeedPayload(TEST_PRIVATE_KEY, 'myapp.eth/blog', largePayload);
+
+      // selectBestBatch should have been called with at least the payload size
+      expect(mockGetPostageBatches).toHaveBeenCalled();
     });
 
     test('accepts Buffer data', async () => {
@@ -526,6 +605,24 @@ describe('feed-service', () => {
         expect(err.reason).toBe('entry_not_found');
         expect(err.message).toContain('index 99');
       }
+    });
+
+    test('propagates non-404 errors on latest read (does not return feed_empty)', async () => {
+      const reader = createMockReader();
+      reader.downloadPayload.mockRejectedValue(new Error('network timeout'));
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      await expect(readFeedPayload(MOCK_OWNER, new MockTopic('ab'.repeat(32))))
+        .rejects.toThrow('network timeout');
+    });
+
+    test('propagates non-404 errors on indexed read (does not return entry_not_found)', async () => {
+      const reader = createMockReader();
+      reader.downloadPayload.mockRejectedValue(new Error('Bee internal error'));
+      mockMakeFeedReader.mockReturnValue(reader);
+
+      await expect(readFeedPayload(MOCK_OWNER, new MockTopic('ab'.repeat(32)), 5))
+        .rejects.toThrow('Bee internal error');
     });
 
     test('constructs EthAddress from owner string', async () => {

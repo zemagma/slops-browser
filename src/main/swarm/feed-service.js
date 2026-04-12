@@ -8,7 +8,7 @@
  * to prevent index collisions from concurrent callers.
  */
 
-const { PrivateKey, Topic, EthAddress } = require('@ethersphere/bee-js');
+const { PrivateKey, Topic, EthAddress, BeeResponseError } = require('@ethersphere/bee-js');
 const { getBee, selectBestBatch, toHex } = require('./swarm-service');
 const log = require('electron-log');
 
@@ -41,6 +41,25 @@ async function withWriteLock(topicHex, fn) {
 }
 
 // ---------------------------------------------------------------------------
+// Error discrimination
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether an error from bee-js represents a "not found" condition
+ * (HTTP 404 or 500 from the Bee API). Only BeeResponseError with these
+ * status codes should be treated as "entry missing". All other errors
+ * (network failures, timeouts, parse errors) must propagate so callers
+ * don't silently proceed on transient failures.
+ *
+ * Intentionally stricter than bee-js's own `findNextIndex`, which catches
+ * any BeeResponseError regardless of status. We only treat 404/500 as
+ * "not found" to avoid silently resetting to index 0 on transient errors.
+ */
+function isNotFoundError(err) {
+  return err instanceof BeeResponseError && (err.status === 404 || err.status === 500);
+}
+
+// ---------------------------------------------------------------------------
 // Topic and index helpers
 // ---------------------------------------------------------------------------
 
@@ -68,7 +87,8 @@ function feedIndexToNumber(feedIndex) {
 /**
  * Resolve the next available feed index using the public FeedReader API.
  * On a non-empty feed, downloads the latest payload to get feedIndexNext.
- * On an empty feed (downloadPayload throws), defaults to 0.
+ * On an empty feed (BeeResponseError 404/500), defaults to 0.
+ * All other errors (network, timeout) propagate to the caller.
  *
  * @param {import('@ethersphere/bee-js').FeedWriter|import('@ethersphere/bee-js').FeedReader} reader
  * @returns {Promise<number>} Next index to write at
@@ -81,9 +101,11 @@ async function resolveNextIndex(reader) {
     }
     // feedIndexNext not set — fall back to feedIndex + 1
     return feedIndexToNumber(latest.feedIndex) + 1;
-  } catch {
-    // Empty feed — no entries yet
-    return 0;
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      return 0;
+    }
+    throw err;
   }
 }
 
@@ -133,7 +155,7 @@ async function createFeed(signerPrivateKey, topicString, batchId) {
  * @param {string} topicString - Topic string (from buildTopicString)
  * @param {string} contentReference - Swarm reference to point the feed at
  * @param {string} [batchId] - Postage batch ID. Auto-selected if omitted.
- * @returns {Promise<{ success: true, index: number }>}
+ * @returns {Promise<{ index: number }>}
  */
 async function updateFeed(signerPrivateKey, topicString, contentReference, batchId) {
   const bee = getBee();
@@ -166,6 +188,10 @@ async function updateFeed(signerPrivateKey, topicString, contentReference, batch
  * If index is omitted, auto-increments to the next available index.
  * If index is provided, checks for existing entry (overwrite protection).
  *
+ * Note: bee-js handles payloads > 4096 bytes by uploading via /bytes and
+ * wrapping the root chunk into the SOC. The batch size estimate uses the
+ * actual payload size so stamp selection accounts for larger entries.
+ *
  * @param {string} signerPrivateKey - 0x-prefixed hex private key
  * @param {string} topicString - Topic string (from buildTopicString)
  * @param {string|Buffer|Uint8Array} data - Payload to write
@@ -178,7 +204,8 @@ async function writeFeedPayload(signerPrivateKey, topicString, data, options = {
   const privateKey = new PrivateKey(signerPrivateKey);
   const topic = Topic.fromString(topicString);
 
-  const resolvedBatchId = batchId || await selectBestBatch(4096);
+  const dataSize = typeof data === 'string' ? Buffer.byteLength(data, 'utf-8') : data.length;
+  const resolvedBatchId = batchId || await selectBestBatch(Math.max(dataSize, 4096));
   if (!resolvedBatchId) {
     throw new Error('No usable postage batch available. Purchase stamps first.');
   }
@@ -193,13 +220,13 @@ async function writeFeedPayload(signerPrivateKey, topicString, data, options = {
       // Explicit index — check for existing entry (overwrite protection)
       try {
         await writer.downloadPayload({ index });
-        // If we reach here, an entry exists at this index
         const err = new Error(`Feed entry already exists at index ${index}`);
         err.reason = 'index_already_exists';
         throw err;
       } catch (e) {
         if (e.reason === 'index_already_exists') throw e;
-        // "not found" — index is available, proceed
+        // Only treat "not found" as "index available". Other errors propagate.
+        if (!isNotFoundError(e)) throw e;
       }
       writeIndex = index;
     } else {
@@ -240,8 +267,11 @@ async function readFeedPayload(ownerAddress, topic, index) {
       : null;
 
     return { payload, index: readIndex, nextIndex };
-  } catch {
-    // Distinguish empty feed from missing index for callers
+  } catch (err) {
+    // Only map "not found" errors to semantic reasons.
+    // All other errors (network, timeout, parse) propagate as-is.
+    if (!isNotFoundError(err)) throw err;
+
     if (index !== undefined && index !== null) {
       const error = new Error(`Feed entry not found at index ${index}`);
       error.reason = 'entry_not_found';
@@ -261,4 +291,5 @@ module.exports = {
   readFeedPayload,
   withWriteLock,
   feedIndexToNumber,
+  isNotFoundError,
 };

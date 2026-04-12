@@ -85,7 +85,7 @@ jest.mock('./publish-history', () => ({
 // Mock global fetch for pre-flight checks
 global.fetch = jest.fn();
 
-const { registerSwarmProviderIpc, executeSwarmMethod, checkSwarmPreFlight, checkBeeReachable, validateVirtualPath, validateFeedName, clearTagOwnership, LIMITS } = require('./swarm-provider-ipc');
+const { registerSwarmProviderIpc, checkSwarmPreFlight, checkBeeReachable, validateVirtualPath, validateFeedName, clearTagOwnership, LIMITS } = require('./swarm-provider-ipc');
 
 registerSwarmProviderIpc();
 
