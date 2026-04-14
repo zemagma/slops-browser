@@ -12,6 +12,7 @@ const { app, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const IPC = require('../../shared/ipc-channels');
+const { normalizeOrigin } = require('../../shared/origin-utils');
 
 const PERMISSIONS_FILE = 'dapp-permissions.json';
 const DEFAULT_AUTO_APPROVE = () => ({ signing: false, transactions: [] });
@@ -60,23 +61,6 @@ function savePermissions() {
     fs.writeFileSync(filePath, JSON.stringify(permissionsCache, null, 2), 'utf-8');
   } catch (err) {
     console.error('[DAppPermissions] Failed to save permissions:', err);
-  }
-}
-
-/**
- * Normalize an origin URL to a consistent format
- * @param {string} origin - Origin URL (e.g., "https://uniswap.org")
- * @returns {string} Normalized origin
- */
-function normalizeOrigin(origin) {
-  if (!origin) return '';
-  try {
-    const url = new URL(origin);
-    // Return protocol + host (no path, no trailing slash)
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    // If not a valid URL, return as-is
-    return origin;
   }
 }
 
@@ -373,6 +357,10 @@ function registerDappPermissionsIpc() {
   console.log('[DAppPermissions] IPC handlers registered');
 }
 
+function _resetCache() {
+  permissionsCache = null;
+}
+
 module.exports = {
   loadPermissions,
   getPermission,
@@ -386,6 +374,6 @@ module.exports = {
   isTransactionAutoApproved,
   addTransactionAutoApprove,
   removeTransactionAutoApprove,
-  normalizeOrigin,
   registerDappPermissionsIpc,
+  _resetCache,
 };
