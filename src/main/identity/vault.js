@@ -184,6 +184,11 @@ function resetAutoLockTimer(autoLockMs = DEFAULT_AUTO_LOCK_MS) {
       console.log('[Vault] Auto-locking due to inactivity');
       lockVault();
     }, autoLockMs);
+    // Don't keep the event loop alive solely for this timer. Production
+    // Electron stays running via windows / IPC handles, so the timer still
+    // fires normally; in Jest, the worker can exit cleanly once tests finish
+    // without waiting for a pending auto-lock to elapse.
+    autoLockTimer.unref();
   }
 }
 
