@@ -41,8 +41,27 @@ contextBridge.exposeInMainWorld('freedomAPI', {
   removeHistory: guardInternal('removeHistory', (id) => ipcRenderer.invoke('history:remove', id)),
   clearHistory: guardInternal('clearHistory', () => ipcRenderer.invoke('history:clear')),
 
-  // Settings (read-only for internal pages)
+  // Settings
   getSettings: guardInternal('getSettings', () => ipcRenderer.invoke('settings:get')),
+  saveSettings: guardInternal('saveSettings', (settings) =>
+    ipcRenderer.invoke('settings:save', settings)
+  ),
+
+  // Platform / environment info needed by settings page
+  getPlatform: guardInternal('getPlatform', () => ipcRenderer.invoke('window:get-platform')),
+
+  // ENS RPC test (used by settings page)
+  testEnsRpc: guardInternal('testEnsRpc', (url) => ipcRenderer.invoke('ens:test-rpc', { url })),
+
+  // Subscribe to settings:updated broadcasts from the main process
+  onSettingsUpdated: (callback) => {
+    if (!isInternalPage()) {
+      return () => {};
+    }
+    const handler = (_event, settings) => callback(settings);
+    ipcRenderer.on('settings:updated', handler);
+    return () => ipcRenderer.removeListener('settings:updated', handler);
+  },
 
   // Bookmarks (read-only for internal pages)
   getBookmarks: guardInternal('getBookmarks', () => ipcRenderer.invoke('bookmarks:get')),

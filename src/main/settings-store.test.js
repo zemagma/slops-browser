@@ -110,6 +110,38 @@ describe('settings-store', () => {
     expect(nativeTheme.themeSource).toBe('light');
   });
 
+  test('saveSettings broadcasts settings:updated to all webContents', () => {
+    const send = jest.fn();
+    const webContents = {
+      getAllWebContents: jest.fn(() => [{ send }, { send }]),
+    };
+    const { mod } = loadSettingsStore({ userDataDir, webContents });
+
+    expect(mod.saveSettings({ theme: 'light' })).toBe(true);
+
+    expect(webContents.getAllWebContents).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledWith(
+      IPC.SETTINGS_UPDATED,
+      expect.objectContaining({ theme: 'light' })
+    );
+  });
+
+  test('saveSettings swallows send errors from destroyed webContents', () => {
+    const webContents = {
+      getAllWebContents: jest.fn(() => [
+        {
+          send: () => {
+            throw new Error('Object has been destroyed');
+          },
+        },
+      ]),
+    };
+    const { mod } = loadSettingsStore({ userDataDir, webContents });
+
+    expect(mod.saveSettings({ theme: 'dark' })).toBe(true);
+  });
+
   test('registers IPC handlers for loading and saving settings', async () => {
     const ipcMain = createIpcMainMock();
     const { mod, nativeTheme } = loadSettingsStore({ userDataDir, ipcMain });

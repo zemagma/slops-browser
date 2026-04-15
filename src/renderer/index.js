@@ -14,7 +14,7 @@ import {
   setOnMenuOpening,
   closeMenus,
 } from './lib/menus.js';
-import { initSettings, setOnSettingsChanged, initTheme } from './lib/settings-ui.js';
+import { initSettingsEffects, initTheme } from './lib/settings-ui.js';
 import {
   initBookmarks,
   loadBookmarks,
@@ -79,7 +79,7 @@ window.serviceRegistry?.getRegistry?.().then((registry) => {
 });
 
 // Wire up cross-module callbacks
-setOnSettingsChanged(onSettingsChanged);
+initSettingsEffects(onSettingsChanged);
 setOnLoadTarget(loadTarget);
 setLoadTargetHandler(loadTarget);
 setReloadHandler(reloadPage);
@@ -197,7 +197,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   initIpfsUi();
   initRadicleUi();
   initGithubBridgeUi();
-  initSettings();
+  document.getElementById('settings-btn')?.addEventListener('click', () => {
+    closeMenus();
+    loadTarget('freedom://settings');
+  });
   initBookmarks();
   initNavigation(); // Sets up event handler with tabs module
   initTabs(); // Creates first tab and starts loading home page

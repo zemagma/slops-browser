@@ -40,6 +40,7 @@ module.exports = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+  SETTINGS_UPDATED: 'settings:updated',
 
   // Bzz routing (Swarm)
   BZZ_SET_BASE: 'bzz:set-base',

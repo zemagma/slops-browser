@@ -1,5 +1,5 @@
 const log = require('./logger');
-const { app, ipcMain, nativeTheme } = require('electron');
+const { app, ipcMain, nativeTheme, webContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const IPC = require('../shared/ipc-channels');
@@ -62,17 +62,43 @@ function loadSettings() {
   return cachedSettings;
 }
 
+function broadcastSettingsUpdated(merged) {
+  if (!webContents?.getAllWebContents) return;
+  for (const wc of webContents.getAllWebContents()) {
+    try {
+      wc.send(IPC.SETTINGS_UPDATED, merged);
+    } catch {
+      // webContents may be destroyed
+    }
+  }
+}
+
+function shallowEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
 function saveSettings(newSettings) {
   try {
-    const merged = { ...loadSettings(), ...newSettings };
+    const previous = loadSettings();
+    const merged = { ...previous, ...newSettings };
+    if (shallowEqual(previous, merged)) {
+      return true;
+    }
     const filePath = getSettingsPath();
     fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), 'utf-8');
     cachedSettings = merged;
 
-    // Apply theme if it changed
-    if (newSettings.theme) {
+    if (newSettings.theme && newSettings.theme !== previous.theme) {
       applyNativeTheme(newSettings.theme);
     }
+
+    broadcastSettingsUpdated(merged);
 
     return true;
   } catch (err) {

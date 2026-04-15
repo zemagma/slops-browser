@@ -171,6 +171,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.send('update:check'),
 });
 
+// Re-dispatch main-process settings:updated broadcasts as a window CustomEvent
+// so existing renderer listeners (theme, radicle, sidebar, wallet, etc.) work
+// regardless of which UI surface triggered the save.
+ipcRenderer.on('settings:updated', (_event, settings) => {
+  try {
+    window.dispatchEvent(new CustomEvent('settings:updated', { detail: settings }));
+  } catch {
+    // Window may be closing
+  }
+});
+
 contextBridge.exposeInMainWorld('bee', {
   start: () => ipcRenderer.invoke('bee:start'),
   stop: () => ipcRenderer.invoke('bee:stop'),
