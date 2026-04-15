@@ -85,7 +85,7 @@ describe('preload', () => {
       ipfsGatewayEnv: 'http://127.0.0.1:9090',
     });
 
-    expect(contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(8);
+    expect(contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(18);
     expect(Object.keys(exposures)).toEqual([
       'nodeConfig',
       'internalPages',
@@ -95,6 +95,16 @@ describe('preload', () => {
       'radicle',
       'githubBridge',
       'serviceRegistry',
+      'identity',
+      'quickUnlock',
+      'wallet',
+      'swarmNode',
+      'chainRegistry',
+      'rpcManager',
+      'dappPermissions',
+      'swarmPermissions',
+      'swarmProvider',
+      'swarmFeedStore',
     ]);
     expect(ipcRenderer.sendSync).toHaveBeenCalledWith(IPC.GET_INTERNAL_PAGES);
     expect(exposures.nodeConfig).toEqual({

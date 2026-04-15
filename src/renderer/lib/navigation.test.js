@@ -78,6 +78,9 @@ const loadNavigationModule = async (options = {}) => {
   };
   const bookmarksUiMocks = {
     updateBookmarkButtonVisibility: jest.fn(),
+    updateBookmarksBarForPage: jest.fn(),
+    setBookmarksBarVisible: jest.fn(),
+    isBookmarksBarVisible: jest.fn(() => true),
   };
   const githubBridgeUiMocks = {
     updateGithubBridgeIcon: jest.fn(),

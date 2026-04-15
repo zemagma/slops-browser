@@ -19,6 +19,8 @@ const SETTINGS_FILE = 'settings.json';
 const DEFAULT_SETTINGS = {
   theme: 'system',
   enableRadicleIntegration: false,
+  enableIdentityWallet: false,
+  beeNodeMode: 'ultraLight',
   startBeeAtLaunch: true,
   startIpfsAtLaunch: true,
   startRadicleAtLaunch: false,
@@ -26,6 +28,8 @@ const DEFAULT_SETTINGS = {
   showBookmarkBar: false,
   enableEnsCustomRpc: false,
   ensRpcUrl: '',
+  sidebarOpen: false,
+  sidebarWidth: 320,
 };
 
 let cachedSettings = null;

@@ -9,7 +9,15 @@ const {
 } = require('../../test/helpers/main-process-test-utils');
 
 function loadSettingsStore(options = {}) {
-  return loadMainModule(require.resolve('./settings-store'), options);
+  return loadMainModule(require.resolve('./settings-store'), {
+    ...options,
+    extraMocks: {
+      ...(options.extraMocks || {}),
+      [require.resolve('./logger')]: () => ({
+        error: jest.fn(),
+      }),
+    },
+  });
 }
 
 describe('settings-store', () => {
@@ -26,24 +34,30 @@ describe('settings-store', () => {
   test('loads defaults and applies the system theme when no file exists', () => {
     const { mod, nativeTheme } = loadSettingsStore({ userDataDir });
 
-    expect(mod.loadSettings()).toEqual({
-      theme: 'system',
-      enableRadicleIntegration: false,
-      startBeeAtLaunch: true,
-      startIpfsAtLaunch: true,
-      startRadicleAtLaunch: false,
-      autoUpdate: true,
-      showBookmarkBar: false,
-      enableEnsCustomRpc: false,
-      ensRpcUrl: '',
-    });
+    expect(mod.loadSettings()).toEqual(
+      expect.objectContaining({
+        theme: 'system',
+        enableRadicleIntegration: false,
+        enableIdentityWallet: false,
+        beeNodeMode: 'ultraLight',
+        startBeeAtLaunch: true,
+        startIpfsAtLaunch: true,
+        startRadicleAtLaunch: false,
+        autoUpdate: true,
+        showBookmarkBar: false,
+        sidebarOpen: false,
+        sidebarWidth: 320,
+        enableEnsCustomRpc: false,
+        ensRpcUrl: '',
+      })
+    );
     expect(nativeTheme.themeSource).toBe('system');
   });
 
   test('merges persisted settings with defaults and applies the saved theme', () => {
     fs.writeFileSync(
       path.join(userDataDir, 'settings.json'),
-      JSON.stringify({ theme: 'dark', autoUpdate: false }),
+      JSON.stringify({ theme: 'dark', autoUpdate: false, beeNodeMode: 'light' }),
       'utf-8'
     );
 
@@ -53,6 +67,7 @@ describe('settings-store', () => {
       expect.objectContaining({
         theme: 'dark',
         autoUpdate: false,
+        beeNodeMode: 'light',
         startBeeAtLaunch: true,
         showBookmarkBar: false,
       })
@@ -68,6 +83,7 @@ describe('settings-store', () => {
     expect(mod.loadSettings()).toEqual(
       expect.objectContaining({
         theme: 'system',
+        beeNodeMode: 'ultraLight',
         autoUpdate: true,
       })
     );
@@ -77,7 +93,9 @@ describe('settings-store', () => {
   test('saveSettings persists a merged payload and updates the theme', () => {
     const { mod, nativeTheme } = loadSettingsStore({ userDataDir });
 
-    expect(mod.saveSettings({ theme: 'light', autoUpdate: false })).toBe(true);
+    expect(mod.saveSettings({ theme: 'light', autoUpdate: false, beeNodeMode: 'light' })).toBe(
+      true
+    );
 
     expect(
       JSON.parse(fs.readFileSync(path.join(userDataDir, 'settings.json'), 'utf-8'))
@@ -85,6 +103,7 @@ describe('settings-store', () => {
       expect.objectContaining({
         theme: 'light',
         autoUpdate: false,
+        beeNodeMode: 'light',
         startBeeAtLaunch: true,
       })
     );
@@ -100,9 +119,11 @@ describe('settings-store', () => {
     await expect(ipcMain.invoke(IPC.SETTINGS_GET)).resolves.toEqual(
       expect.objectContaining({
         theme: 'system',
+        beeNodeMode: 'ultraLight',
       })
     );
-    await expect(ipcMain.invoke(IPC.SETTINGS_SAVE, { theme: 'dark' })).resolves.toBe(true);
+    await expect(ipcMain.invoke(IPC.SETTINGS_SAVE, { theme: 'dark', beeNodeMode: 'light' }))
+      .resolves.toBe(true);
 
     expect(nativeTheme.themeSource).toBe('dark');
   });

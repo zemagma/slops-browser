@@ -488,7 +488,7 @@ describe('tabs ui behavior', () => {
     const activeTab = mod.getActiveTab();
     activeTab.pinned = true;
     electronHandlers.closeTab();
-    expect(mod.getTabs()).toHaveLength(4);
+    expect(mod.getTabs()).toHaveLength(3);
 
     electronHandlers.newTabWithUrl('https://named-target.example', 'named-target');
     expect(mod.getActiveTab().url).toBe('https://named-target.example');

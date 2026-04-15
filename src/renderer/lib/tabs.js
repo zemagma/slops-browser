@@ -5,6 +5,8 @@ import { hideBookmarkContextMenu } from './bookmarks-ui.js';
 import { showMenuBackdrop, hideMenuBackdrop } from './menu-backdrop.js';
 import { setupWebviewContextMenu } from './page-context-menu.js';
 import { homeUrl } from './page-urls.js';
+import { setupWebviewProvider, setActiveWebview } from './dapp-provider.js';
+import { setupSwarmProvider } from './swarm-provider.js';
 
 const electronAPI = window.electronAPI;
 
@@ -170,6 +172,25 @@ export const closeAllDevTools = () => {
 
 // Get all tabs
 export const getTabs = () => tabState.tabs;
+
+/**
+ * Get the committed display URL for a specific webview.
+ * Always reads from the tab's addressBarSnapshot — the last display URL
+ * committed by a navigation event or tab switch. Never reads the live
+ * address bar input, which could contain user edits in progress.
+ *
+ * This is critical for provider permission checks — if a page fires a
+ * request while the user is typing in the address bar, we must derive
+ * the origin from the committed navigation identity, not partial input.
+ *
+ * @param {HTMLElement} webview - The webview element
+ * @returns {string} The committed display URL for this webview's tab
+ */
+export const getDisplayUrlForWebview = (webview) => {
+  const tab = tabState.tabs.find((t) => t.webview === webview);
+  if (!tab) return '';
+  return tab.navigationState?.addressBarSnapshot || '';
+};
 
 // Create default navigation state for a tab
 const createNavigationState = () => ({
@@ -349,6 +370,10 @@ const createWebview = (tabId, initialUrl) => {
 
   // Set up context menu listener
   setupWebviewContextMenu(webview);
+
+  // Set up providers (window.ethereum + window.swarm)
+  setupWebviewProvider(webview);
+  setupSwarmProvider(webview);
 
   return webview;
 };
@@ -638,12 +663,13 @@ const renderTabs = () => {
 // Create a new tab
 export const createTab = (url = null) => {
   const tabId = tabState.nextTabId++;
-  const targetUrl = url || homeUrl;
-  const webview = createWebview(tabId, targetUrl);
+  const isDirectUrl = !url || url.startsWith('http://') || url.startsWith('https://');
+  const webviewUrl = isDirectUrl ? (url || homeUrl) : homeUrl;
+  const webview = createWebview(tabId, webviewUrl);
 
   const tab = {
     id: tabId,
-    url: targetUrl,
+    url: url || homeUrl,
     title: 'New Tab',
     isLoading: false,
     webview,
@@ -655,6 +681,12 @@ export const createTab = (url = null) => {
 
   // Switch to the new tab
   switchTab(tabId, { isNewTab: true });
+
+  // For protocol URLs (ens://, bzz://, ipfs://, etc.), route through the
+  // URL resolution pipeline instead of setting webview src directly
+  if (!isDirectUrl && url) {
+    setTimeout(() => { if (onLoadTarget) onLoadTarget(url); }, 50);
+  }
 
   pushDebug(`Created tab ${tabId}`);
   return tab;
@@ -902,6 +934,11 @@ export const switchTab = (tabId, options = {}) => {
     }
   }
 
+  // Update active webview for dApp provider
+  if (tab.webview) {
+    setActiveWebview(tab.webview);
+  }
+
   // Update window title
   if (tab.title) {
     electronAPI?.setWindowTitle?.(tab.title);
@@ -957,6 +994,12 @@ export const initTabs = async () => {
     }
   });
 
+  // Hide context menu on escape or when window loses focus
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideTabContextMenu();
+    }
+  });
   window.addEventListener('blur', hideTabContextMenu);
 
   // Hide context menu when webview gets focus
@@ -986,10 +1029,7 @@ export const initTabs = async () => {
 
   electronAPI?.onCloseTab?.(() => {
     if (tabState.activeTabId) {
-      const activeTab = tabState.tabs.find((t) => t.id === tabState.activeTabId);
-      if (activeTab && !activeTab.pinned) {
-        closeTab(tabState.activeTabId);
-      }
+      closeTab(tabState.activeTabId);
     }
   });
 
@@ -1104,30 +1144,89 @@ export const initTabs = async () => {
     reopenLastClosedTab();
   });
 
-  // Keyboard shortcuts not covered by menu accelerators
+  // Keyboard shortcuts (fallback for when menu doesn't handle it)
   window.addEventListener('keydown', (event) => {
-    // Ctrl+Tab - Next tab (all platforms)
+    // Cmd+T - New tab (exclude Shift to avoid conflict with Cmd+Shift+T)
+    if (event.metaKey && !event.shiftKey && event.key.toLowerCase() === 't') {
+      event.preventDefault();
+      createTab(homeUrl);
+    }
+    // Cmd+W - Close tab (skip pinned tabs)
+    if (event.metaKey && event.key.toLowerCase() === 'w') {
+      event.preventDefault();
+      if (tabState.activeTabId) {
+        const activeTab = tabState.tabs.find((t) => t.id === tabState.activeTabId);
+        if (activeTab && !activeTab.pinned) {
+          closeTab(tabState.activeTabId);
+        }
+      }
+    }
+    // Cmd+Option+I (Mac) or Ctrl+Shift+I (Win/Linux) - Toggle DevTools
+    if (
+      (event.metaKey && event.altKey && event.key.toLowerCase() === 'i') ||
+      (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'i')
+    ) {
+      event.preventDefault();
+      toggleDevTools();
+    }
+    // Cmd+L (Mac) or Ctrl+L (Win/Linux) - Focus address bar
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'l') {
+      event.preventDefault();
+      const addressInput = document.getElementById('address-input');
+      if (addressInput) {
+        addressInput.focus();
+        addressInput.select();
+      }
+    }
+    // Ctrl+Tab / Ctrl+PageDown - Next tab (all platforms)
     // Cmd+Shift+] - Next tab (macOS alternative)
     if (
       (event.ctrlKey && event.key === 'Tab' && !event.shiftKey) ||
+      (event.ctrlKey && event.key === 'PageDown' && !event.shiftKey) ||
       (event.metaKey && event.shiftKey && event.key === ']')
     ) {
       event.preventDefault();
       switchToNextTab();
     }
-    // Ctrl+Shift+Tab - Previous tab (all platforms)
+    // Ctrl+Shift+Tab / Ctrl+PageUp - Previous tab (all platforms)
     // Cmd+Shift+[ - Previous tab (macOS alternative)
     if (
       (event.ctrlKey && event.key === 'Tab' && event.shiftKey) ||
+      (event.ctrlKey && event.key === 'PageUp' && !event.shiftKey) ||
       (event.metaKey && event.shiftKey && event.key === '[')
     ) {
       event.preventDefault();
       switchToPrevTab();
     }
-    // Ctrl+Shift+I (Win/Linux) - Toggle DevTools
-    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'i') {
+    // Ctrl+Shift+PageDown - Move tab right
+    if (event.ctrlKey && event.shiftKey && event.key === 'PageDown') {
       event.preventDefault();
-      toggleDevTools();
+      moveTab('right');
+    }
+    // Ctrl+Shift+PageUp - Move tab left
+    if (event.ctrlKey && event.shiftKey && event.key === 'PageUp') {
+      event.preventDefault();
+      moveTab('left');
+    }
+    // Ctrl+F4 - Close tab (Windows/Linux)
+    if (event.ctrlKey && event.key === 'F4') {
+      event.preventDefault();
+      if (tabState.activeTabId) {
+        const activeTab = tabState.tabs.find((t) => t.id === tabState.activeTabId);
+        if (activeTab && !activeTab.pinned) {
+          closeTab(tabState.activeTabId);
+        }
+      }
+    }
+    // Cmd+Shift+T / Ctrl+Shift+T - Reopen closed tab
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+      event.preventDefault();
+      reopenLastClosedTab();
+    }
+    // F11 - Toggle fullscreen
+    if (event.key === 'F11') {
+      event.preventDefault();
+      electronAPI?.toggleFullscreen?.();
     }
     // F12 - Toggle DevTools
     if (event.key === 'F12') {

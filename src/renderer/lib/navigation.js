@@ -62,11 +62,13 @@ let homeBtn = null;
 let bookmarksBar = null;
 let protocolIcon = null;
 
+// Bookmark bar toggle state: true = always show, false = hide on non-home pages (default)
+let bookmarkBarOverride = false;
+
 // Track previous active tab ID to save address bar state when switching
 let previousActiveTabId = null;
 
-// Bookmark bar toggle state: true = always show, false = hide on non-home pages (default)
-let bookmarkBarOverride = false;
+
 
 // Last recorded URL to avoid duplicates in quick succession
 let lastRecordedUrl = null;
@@ -637,6 +639,7 @@ const handleNavigationEvent = (event) => {
       updateBookmarkButtonVisibility();
   updateGithubBridgeIcon();
       updateProtocolIcon();
+      navState.addressBarSnapshot = addressInput.value;
       return;
     }
 
@@ -655,6 +658,7 @@ const handleNavigationEvent = (event) => {
       updateNavigationState();
       updateBookmarkButtonVisibility();
   updateGithubBridgeIcon();
+      navState.addressBarSnapshot = addressInput.value;
       return;
     }
 
@@ -671,6 +675,7 @@ const handleNavigationEvent = (event) => {
       updateBookmarkButtonVisibility();
   updateGithubBridgeIcon();
       updateProtocolIcon();
+      navState.addressBarSnapshot = addressInput.value;
       return;
     }
 
@@ -739,10 +744,14 @@ const handleNavigationEvent = (event) => {
   updateBookmarkButtonVisibility();
   updateGithubBridgeIcon();
   updateProtocolIcon();
+
+  // Snapshot the committed display URL for provider origin derivation.
+  // This ensures getDisplayUrlForWebview() reads the post-navigation identity,
+  // not a stale or user-edited address bar value.
+  navState.addressBarSnapshot = addressInput.value;
 };
 
-// Update bookmark bar visibility based on toggle state and current page
-// Like Chrome: bookmark bar always shows on new tab page; toggle only affects other pages
+// Update bookmark bar visibility for a URL change
 const updateBookmarkBarState = (url) => {
   if (!bookmarksBar) return;
   const bookmarkBarState = getBookmarkBarState({
@@ -1090,6 +1099,8 @@ export const initNavigation = () => {
         }
         pushDebug(`did-navigate event fired: ${data.event?.url}`);
         if (data.event) handleNavigationEvent(data.event);
+        // Notify other modules that navigation completed (for dApp connection banner)
+        document.dispatchEvent(new CustomEvent('navigation-completed'));
         break;
 
       case 'certificate-error':
@@ -1101,6 +1112,8 @@ export const initNavigation = () => {
 
       case 'did-navigate-in-page':
         if (data.event) handleNavigationEvent(data.event);
+        // Notify other modules that navigation completed (for dApp connection banner)
+        document.dispatchEvent(new CustomEvent('navigation-completed'));
         break;
 
       case 'dom-ready':

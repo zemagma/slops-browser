@@ -232,3 +232,157 @@ contextBridge.exposeInMainWorld('serviceRegistry', {
     return () => ipcRenderer.removeListener('service-registry:update', handler);
   },
 });
+
+contextBridge.exposeInMainWorld('identity', {
+  hasVault: () => ipcRenderer.invoke('identity:has-vault'),
+  isUnlocked: () => ipcRenderer.invoke('identity:is-unlocked'),
+  getStatus: () => ipcRenderer.invoke('identity:get-status'),
+  getVaultMeta: () => ipcRenderer.invoke('identity:get-vault-meta'),
+  generateMnemonic: (strength = 256) => ipcRenderer.invoke('identity:generate-mnemonic', strength),
+  createVault: (password, strength = 256, userKnowsPassword = true) =>
+    ipcRenderer.invoke('identity:create-vault', password, strength, userKnowsPassword),
+  importMnemonic: (password, mnemonic, userKnowsPassword = true) =>
+    ipcRenderer.invoke('identity:import-mnemonic', password, mnemonic, userKnowsPassword),
+  unlock: (password) => ipcRenderer.invoke('identity:unlock', password),
+  lock: () => ipcRenderer.invoke('identity:lock'),
+  injectAll: (radicleAlias = 'FreedomBrowser', force = false) => ipcRenderer.invoke('identity:inject-all', radicleAlias, force),
+  exportMnemonic: (password) => ipcRenderer.invoke('identity:export-mnemonic', password),
+  exportPrivateKey: (accountIndex, password) => ipcRenderer.invoke('identity:export-private-key', accountIndex, password),
+  changePassword: (currentPassword, newPassword) => ipcRenderer.invoke('identity:change-password', currentPassword, newPassword),
+  deleteVault: (password) => ipcRenderer.invoke('identity:delete-vault', password),
+  validateMnemonic: (mnemonic) => ipcRenderer.invoke('identity:validate-mnemonic', mnemonic),
+});
+
+contextBridge.exposeInMainWorld('quickUnlock', {
+  canUseTouchId: () => ipcRenderer.invoke('quick-unlock:can-use-touch-id'),
+  isEnabled: () => ipcRenderer.invoke('quick-unlock:is-enabled'),
+  enable: (password) => ipcRenderer.invoke('quick-unlock:enable', password),
+  unlock: () => ipcRenderer.invoke('quick-unlock:unlock'),
+  disable: () => ipcRenderer.invoke('quick-unlock:disable'),
+});
+
+contextBridge.exposeInMainWorld('wallet', {
+  // Balance operations
+  getBalances: (address) => ipcRenderer.invoke('wallet:get-balances', address),
+  getBalancesCached: (address) => ipcRenderer.invoke('wallet:get-balances-cached', address),
+  clearBalanceCache: (address) => ipcRenderer.invoke('wallet:clear-balance-cache', address),
+
+  // Chain info
+  getChain: (chainId) => ipcRenderer.invoke('wallet:get-chain', chainId),
+  getChains: () => ipcRenderer.invoke('wallet:get-chains'),
+  testProvider: (chainId) => ipcRenderer.invoke('wallet:test-provider', chainId),
+
+  // Multi-wallet operations
+  getDerivedWallets: () => ipcRenderer.invoke('wallet:get-derived-wallets'),
+  getActiveIndex: () => ipcRenderer.invoke('wallet:get-active-index'),
+  setActiveWallet: (index) => ipcRenderer.invoke('wallet:set-active-wallet', index),
+  createDerivedWallet: (name) => ipcRenderer.invoke('wallet:create-derived-wallet', name),
+  renameWallet: (index, newName) => ipcRenderer.invoke('wallet:rename-wallet', index, newName),
+  deleteWallet: (index) => ipcRenderer.invoke('wallet:delete-wallet', index),
+  getActiveAddress: () => ipcRenderer.invoke('wallet:get-active-address'),
+
+  // QR code generation
+  generateQR: (text, options) => ipcRenderer.invoke('wallet:generate-qr', text, options),
+
+  // Transaction operations
+  estimateGas: (params) => ipcRenderer.invoke('wallet:estimate-gas', params),
+  getGasPrice: (chainId) => ipcRenderer.invoke('wallet:get-gas-price', chainId),
+  buildErc20Data: (to, amount) => ipcRenderer.invoke('wallet:build-erc20-data', to, amount),
+  parseAmount: (amount, decimals) => ipcRenderer.invoke('wallet:parse-amount', amount, decimals),
+  sendTransaction: (params) => ipcRenderer.invoke('wallet:send-transaction', params),
+  getTransactionStatus: (txHash, chainId) => ipcRenderer.invoke('wallet:get-transaction-status', txHash, chainId),
+  waitForTransaction: (txHash, chainId, confirmations) => ipcRenderer.invoke('wallet:wait-for-transaction', txHash, chainId, confirmations),
+
+  // dApp-specific operations (use specific wallet index)
+  dappSendTransaction: (params, walletIndex) => ipcRenderer.invoke('wallet:dapp-send-transaction', params, walletIndex),
+  signMessage: (message, walletIndex) => ipcRenderer.invoke('wallet:sign-message', message, walletIndex),
+  signTypedData: (typedData, walletIndex) => ipcRenderer.invoke('wallet:sign-typed-data', typedData, walletIndex),
+
+  // RPC proxy (renderer CSP blocks direct fetch to external endpoints)
+  proxyRpc: (rpcUrl, method, params) => ipcRenderer.invoke('wallet:proxy-rpc', { rpcUrl, method, params }),
+});
+
+contextBridge.exposeInMainWorld('swarmNode', {
+  getStamps: () => ipcRenderer.invoke('swarm:get-stamps'),
+  getStorageCost: (sizeGB, durationDays) => ipcRenderer.invoke('swarm:get-storage-cost', sizeGB, durationDays),
+  buyStorage: (sizeGB, durationDays) => ipcRenderer.invoke('swarm:buy-storage', sizeGB, durationDays),
+  getDurationExtensionCost: (batchId, additionalDays) => ipcRenderer.invoke('swarm:get-duration-extension-cost', batchId, additionalDays),
+  getSizeExtensionCost: (batchId, newSizeGB) => ipcRenderer.invoke('swarm:get-size-extension-cost', batchId, newSizeGB),
+  extendStorageDuration: (batchId, additionalDays) => ipcRenderer.invoke('swarm:extend-storage-duration', batchId, additionalDays),
+  extendStorageSize: (batchId, newSizeGB) => ipcRenderer.invoke('swarm:extend-storage-size', batchId, newSizeGB),
+  getChequebookBalance: () => ipcRenderer.invoke('swarm:get-chequebook-balance'),
+  depositChequebook: (amountBzz) => ipcRenderer.invoke('swarm:deposit-chequebook', amountBzz),
+  publishData: (data) => ipcRenderer.invoke('swarm:publish-data', data),
+  publishFile: (filePath) => ipcRenderer.invoke('swarm:publish-file', filePath),
+  publishDirectory: (dirPath) => ipcRenderer.invoke('swarm:publish-directory', dirPath),
+  getUploadStatus: (tagUid) => ipcRenderer.invoke('swarm:get-upload-status', tagUid),
+});
+
+contextBridge.exposeInMainWorld('chainRegistry', {
+  getChains: () => ipcRenderer.invoke('chain-registry:get-chains'),
+  getTokens: (chainId) => ipcRenderer.invoke('chain-registry:get-tokens', chainId),
+  getChain: (chainId) => ipcRenderer.invoke('chain-registry:get-chain', chainId),
+  getToken: (key) => ipcRenderer.invoke('chain-registry:get-token', key),
+  addChain: (chain) => ipcRenderer.invoke('chain-registry:add-chain', chain),
+  addToken: (token) => ipcRenderer.invoke('chain-registry:add-token', token),
+  removeChain: (chainId) => ipcRenderer.invoke('chain-registry:remove-chain', chainId),
+  removeToken: (key) => ipcRenderer.invoke('chain-registry:remove-token', key),
+  getAvailableChains: () => ipcRenderer.invoke('chain-registry:get-available-chains'),
+  isChainAvailable: (chainId) => ipcRenderer.invoke('chain-registry:is-chain-available', chainId),
+});
+
+contextBridge.exposeInMainWorld('rpcManager', {
+  // Get all available RPC providers (Alchemy, Infura, DRPC, etc.)
+  getProviders: () => ipcRenderer.invoke('rpc:get-providers'),
+  // Get list of provider IDs that have API keys configured
+  getConfiguredProviders: () => ipcRenderer.invoke('rpc:get-configured-providers'),
+  // Check if a specific provider has an API key
+  hasApiKey: (providerId) => ipcRenderer.invoke('rpc:has-api-key', providerId),
+  // Set API key for a provider
+  setApiKey: (providerId, apiKey) => ipcRenderer.invoke('rpc:set-api-key', providerId, apiKey),
+  // Remove API key for a provider
+  removeApiKey: (providerId) => ipcRenderer.invoke('rpc:remove-api-key', providerId),
+  // Test an API key before saving
+  testApiKey: (providerId, apiKey) => ipcRenderer.invoke('rpc:test-api-key', providerId, apiKey),
+  // Get chains supported by configured providers
+  getProviderSupportedChains: () => ipcRenderer.invoke('rpc:get-provider-supported-chains'),
+  // Get effective RPC URLs for a chain (includes provider URLs)
+  getEffectiveUrls: (chainId) => ipcRenderer.invoke('rpc:get-effective-urls', chainId),
+});
+
+contextBridge.exposeInMainWorld('dappPermissions', {
+  getPermission: (origin) => ipcRenderer.invoke('dapp:get-permission', origin),
+  grantPermission: (origin, walletIndex, chainId) => ipcRenderer.invoke('dapp:grant-permission', origin, walletIndex, chainId),
+  revokePermission: (origin) => ipcRenderer.invoke('dapp:revoke-permission', origin),
+  getAllPermissions: () => ipcRenderer.invoke('dapp:get-all-permissions'),
+  updateLastUsed: (origin, chainId) => ipcRenderer.invoke('dapp:update-last-used', origin, chainId),
+  getSigningAutoApprove: (origin) => ipcRenderer.invoke('dapp:get-signing-auto-approve', origin),
+  setSigningAutoApprove: (origin, enabled) => ipcRenderer.invoke('dapp:set-signing-auto-approve', origin, enabled),
+  isTransactionAutoApproved: (origin, to, selector, chainId) => ipcRenderer.invoke('dapp:is-tx-auto-approved', origin, to, selector, chainId),
+  addTransactionAutoApprove: (origin, to, selector, chainId) => ipcRenderer.invoke('dapp:add-tx-auto-approve', origin, to, selector, chainId),
+  removeTransactionAutoApprove: (origin, to, selector, chainId) => ipcRenderer.invoke('dapp:remove-tx-auto-approve', origin, to, selector, chainId),
+});
+
+contextBridge.exposeInMainWorld('swarmPermissions', {
+  getPermission: (origin) => ipcRenderer.invoke('swarm:get-permission', origin),
+  grantPermission: (origin) => ipcRenderer.invoke('swarm:grant-permission', origin),
+  revokePermission: (origin) => ipcRenderer.invoke('swarm:revoke-permission', origin),
+  getAllPermissions: () => ipcRenderer.invoke('swarm:get-all-permissions'),
+  updateLastUsed: (origin) => ipcRenderer.invoke('swarm:update-last-used', origin),
+  getAutoApprove: (origin, type) => ipcRenderer.invoke('swarm:get-auto-approve', origin, type),
+  setAutoApprove: (origin, type, enabled) => ipcRenderer.invoke('swarm:set-auto-approve', origin, type, enabled),
+});
+
+contextBridge.exposeInMainWorld('swarmProvider', {
+  execute: (method, params, origin) =>
+    ipcRenderer.invoke('swarm:provider-execute', { method, params, origin }),
+});
+
+contextBridge.exposeInMainWorld('swarmFeedStore', {
+  getAllOrigins: () => ipcRenderer.invoke('swarm:get-all-origins'),
+  hasFeedIdentity: (origin) => ipcRenderer.invoke('swarm:has-feed-identity', origin),
+  hasFeedGrant: (origin) => ipcRenderer.invoke('swarm:has-feed-grant', origin),
+  getIdentityMode: (origin) => ipcRenderer.invoke('swarm:get-identity-mode', origin),
+  setFeedIdentity: (origin, identityMode) => ipcRenderer.invoke('swarm:set-feed-identity', origin, identityMode),
+  revokeFeedAccess: (origin) => ipcRenderer.invoke('swarm:revoke-feed-access', origin),
+});

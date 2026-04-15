@@ -1,0 +1,78 @@
+/**
+ * Origin Normalization Utilities (Renderer)
+ *
+ * ESM copy of src/shared/origin-utils.js. The shared file is CommonJS and
+ * cannot be imported directly by the renderer (script type="module" context
+ * with no Node require). Both implementations MUST stay in sync; drift is
+ * guarded against by src/renderer/lib/origin-utils.test.js which asserts
+ * equivalence across a battery of inputs.
+ *
+ * Rules (must match shared/origin-utils.js exactly):
+ *
+ *   ens://myapp.eth/#/path  → myapp.eth       (ENS name, lowercased)
+ *   myapp.eth/blog          → myapp.eth        (bare ENS)
+ *   bzz://abc123/page       → bzz://abc123     (root ref)
+ *   ipfs://QmABC/docs       → ipfs://QmABC     (root CID)
+ *   ipns://host/guide       → ipns://host      (hostname)
+ *   rad://z123/tree         → rad://z123       (RID)
+ *   https://app.example.com → https://app.example.com
+ */
+
+/**
+ * Extract the permission key from a display URL.
+ * Returns the root content identity, never including paths.
+ *
+ * @param {string} displayUrl
+ * @returns {string|null}
+ */
+export function getPermissionKey(displayUrl) {
+  if (!displayUrl) return null;
+
+  const trimmed = displayUrl.trim();
+  if (!trimmed) return null;
+
+  // ENS name without protocol (e.g., 1inch.eth/path)
+  if (/^[a-z0-9-]+\.(eth|box)/i.test(trimmed)) {
+    return trimmed.split('/')[0].toLowerCase();
+  }
+
+  // ens:// protocol → extract ENS name (e.g., ens://1inch.eth/#/path → 1inch.eth)
+  const ensMatch = trimmed.match(/^ens:\/\/([^/#]+)/i);
+  if (ensMatch) {
+    return ensMatch[1].toLowerCase();
+  }
+
+  // dweb protocols: ipfs://CID/path → ipfs://CID
+  const dwebMatch = trimmed.match(/^(ipfs|bzz|ipns):\/\/([^/]+)/i);
+  if (dwebMatch) {
+    return `${dwebMatch[1].toLowerCase()}://${dwebMatch[2]}`;
+  }
+
+  // rad:// protocol
+  const radMatch = trimmed.match(/^rad:\/\/([^/]+)/i);
+  if (radMatch) {
+    return `rad://${radMatch[1]}`;
+  }
+
+  // Regular URL (https://host/path → https://host)
+  try {
+    const url = new URL(trimmed);
+    if (url.origin === 'null') {
+      return trimmed;
+    }
+    return url.origin;
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
+ * Normalize an origin for permission storage lookup.
+ * Same logic as getPermissionKey — named for clarity in permission store context.
+ *
+ * @param {string} origin
+ * @returns {string}
+ */
+export function normalizeOrigin(origin) {
+  return getPermissionKey(origin) || '';
+}

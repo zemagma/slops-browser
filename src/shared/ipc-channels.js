@@ -6,6 +6,7 @@ module.exports = {
   BOOKMARKS_ADD: 'bookmarks:add',
   BOOKMARKS_UPDATE: 'bookmarks:update',
   BOOKMARKS_REMOVE: 'bookmarks:remove',
+  BOOKMARKS_BAR_TOGGLE: 'bookmarks-bar:toggle',
 
   // Bee node management
   BEE_START: 'bee:start',
@@ -101,6 +102,7 @@ module.exports = {
   // Bookmarks bar
   BOOKMARKS_TOGGLE_BAR: 'bookmarks:toggle-bar',
 
+
   // GitHub Bridge
   GITHUB_BRIDGE_IMPORT: 'github-bridge:import',
   GITHUB_BRIDGE_PROGRESS: 'github-bridge:progress',
@@ -108,4 +110,76 @@ module.exports = {
   GITHUB_BRIDGE_CHECK_PREREQUISITES: 'github-bridge:check-prerequisites',
   GITHUB_BRIDGE_VALIDATE_URL: 'github-bridge:validate-url',
   GITHUB_BRIDGE_CHECK_EXISTING: 'github-bridge:check-existing',
+
+  // Identity Management
+  IDENTITY_HAS_VAULT: 'identity:has-vault',
+  IDENTITY_IS_UNLOCKED: 'identity:is-unlocked',
+  IDENTITY_GENERATE_MNEMONIC: 'identity:generate-mnemonic',
+  IDENTITY_CREATE_VAULT: 'identity:create-vault',
+  IDENTITY_IMPORT_MNEMONIC: 'identity:import-mnemonic',
+  IDENTITY_UNLOCK: 'identity:unlock',
+  IDENTITY_LOCK: 'identity:lock',
+  IDENTITY_GET_STATUS: 'identity:get-status',
+  IDENTITY_INJECT_ALL: 'identity:inject-all',
+  IDENTITY_EXPORT_MNEMONIC: 'identity:export-mnemonic',
+  IDENTITY_EXPORT_PRIVATE_KEY: 'identity:export-private-key',
+  IDENTITY_CHANGE_PASSWORD: 'identity:change-password',
+  IDENTITY_DELETE_VAULT: 'identity:delete-vault',
+  IDENTITY_VALIDATE_MNEMONIC: 'identity:validate-mnemonic',
+
+  // Chain Registry
+  CHAIN_REGISTRY_GET_CHAINS: 'chain-registry:get-chains',
+  CHAIN_REGISTRY_GET_TOKENS: 'chain-registry:get-tokens',
+  CHAIN_REGISTRY_GET_CHAIN: 'chain-registry:get-chain',
+  CHAIN_REGISTRY_GET_TOKEN: 'chain-registry:get-token',
+  CHAIN_REGISTRY_ADD_CHAIN: 'chain-registry:add-chain',
+  CHAIN_REGISTRY_ADD_TOKEN: 'chain-registry:add-token',
+  CHAIN_REGISTRY_REMOVE_CHAIN: 'chain-registry:remove-chain',
+  CHAIN_REGISTRY_REMOVE_TOKEN: 'chain-registry:remove-token',
+
+  // Wallet Transactions
+  WALLET_ESTIMATE_GAS: 'wallet:estimate-gas',
+  WALLET_GET_GAS_PRICE: 'wallet:get-gas-price',
+  WALLET_BUILD_ERC20_DATA: 'wallet:build-erc20-data',
+  WALLET_PARSE_AMOUNT: 'wallet:parse-amount',
+  WALLET_SEND_TRANSACTION: 'wallet:send-transaction',
+  WALLET_GET_TRANSACTION_STATUS: 'wallet:get-transaction-status',
+  WALLET_WAIT_FOR_TRANSACTION: 'wallet:wait-for-transaction',
+
+  // dApp Permissions
+  DAPP_GET_PERMISSION: 'dapp:get-permission',
+  DAPP_GRANT_PERMISSION: 'dapp:grant-permission',
+  DAPP_REVOKE_PERMISSION: 'dapp:revoke-permission',
+  DAPP_GET_ALL_PERMISSIONS: 'dapp:get-all-permissions',
+  DAPP_UPDATE_LAST_USED: 'dapp:update-last-used',
+  DAPP_GET_SIGNING_AUTO_APPROVE: 'dapp:get-signing-auto-approve',
+  DAPP_SET_SIGNING_AUTO_APPROVE: 'dapp:set-signing-auto-approve',
+  DAPP_IS_TX_AUTO_APPROVED: 'dapp:is-tx-auto-approved',
+  DAPP_ADD_TX_AUTO_APPROVE: 'dapp:add-tx-auto-approve',
+  DAPP_REMOVE_TX_AUTO_APPROVE: 'dapp:remove-tx-auto-approve',
+
+  // dApp Provider (webview ↔ renderer ↔ main)
+  DAPP_PROVIDER_REQUEST: 'dapp:provider-request',
+  DAPP_PROVIDER_RESPONSE: 'dapp:provider-response',
+  DAPP_PROVIDER_EVENT: 'dapp:provider-event',
+
+  // Swarm Provider Permissions
+  SWARM_GET_PERMISSION: 'swarm:get-permission',
+  SWARM_GRANT_PERMISSION: 'swarm:grant-permission',
+  SWARM_REVOKE_PERMISSION: 'swarm:revoke-permission',
+  SWARM_GET_ALL_PERMISSIONS: 'swarm:get-all-permissions',
+  SWARM_UPDATE_LAST_USED: 'swarm:update-last-used',
+  SWARM_GET_AUTO_APPROVE: 'swarm:get-auto-approve',
+  SWARM_SET_AUTO_APPROVE: 'swarm:set-auto-approve',
+
+  // Swarm Provider (main-process authority)
+  SWARM_PROVIDER_EXECUTE: 'swarm:provider-execute',
+
+  // Swarm Feed Store
+  SWARM_GET_ALL_ORIGINS: 'swarm:get-all-origins',
+  SWARM_HAS_FEED_IDENTITY: 'swarm:has-feed-identity',
+  SWARM_SET_FEED_IDENTITY: 'swarm:set-feed-identity',
+  SWARM_HAS_FEED_GRANT: 'swarm:has-feed-grant',
+  SWARM_GET_IDENTITY_MODE: 'swarm:get-identity-mode',
+  SWARM_REVOKE_FEED_ACCESS: 'swarm:revoke-feed-access',
 };
