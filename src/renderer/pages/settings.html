@@ -589,16 +589,13 @@
           <h2 class="section-title">Experimental</h2>
           <p class="section-subtitle">Features that are still being polished.</p>
           <div class="card">
-            <div class="row">
+            <div class="row" id="swarm-mode-row">
               <div class="row-body">
-                <p class="row-label">Enable Swarm light node mode</p>
-                <p class="row-help">Runs bee as a light node. Restarts the node after change.</p>
+                <p class="row-label">Swarm node mode</p>
+                <p class="row-help" id="swarm-mode-help">Loading…</p>
               </div>
               <div class="row-control">
-                <label class="toggle">
-                  <input type="checkbox" id="enable-bee-light-mode" />
-                  <span class="slider"></span>
-                </label>
+                <button type="button" id="swarm-mode-action-btn" class="btn" hidden></button>
               </div>
             </div>
             <div class="row" data-radicle>
@@ -673,7 +670,6 @@
         ensRpcUrl: $('ens-rpc-url'),
         ensRpcTest: $('ens-rpc-test'),
         ensRpcStatus: $('ens-rpc-status'),
-        enableBeeLight: $('enable-bee-light-mode'),
         enableRadicle: $('enable-radicle-integration'),
         startRadicleRow: $('start-radicle-row'),
         startRadicle: $('start-radicle-at-launch'),
@@ -681,6 +677,8 @@
         autoUpdate: $('auto-update'),
       };
 
+      const swarmModeHelp = $('swarm-mode-help');
+      const swarmModeBtn = $('swarm-mode-action-btn');
       const savedIndicator = $('saved-indicator');
 
       let isWindows = false;
@@ -739,7 +737,6 @@
 
       const currentFormState = () => ({
         theme: fields.themeMode.value || 'system',
-        beeNodeMode: fields.enableBeeLight.checked ? 'light' : 'ultraLight',
         startBeeAtLaunch: fields.startBee.checked,
         startIpfsAtLaunch: fields.startIpfs.checked,
         enableRadicleIntegration: isWindows ? false : fields.enableRadicle.checked,
@@ -755,7 +752,6 @@
         fields.themeMode.value = settings.theme || 'system';
         fields.startBee.checked = settings.startBeeAtLaunch !== false;
         fields.startIpfs.checked = settings.startIpfsAtLaunch !== false;
-        fields.enableBeeLight.checked = settings.beeNodeMode === 'light';
         fields.enableRadicle.checked = settings.enableRadicleIntegration === true;
         fields.startRadicle.checked = settings.startRadicleAtLaunch === true;
         fields.enableIdentity.checked = settings.enableIdentityWallet === true;
@@ -765,6 +761,81 @@
         setEnsRpcBlockVisible(fields.enableEnsCustomRpc.checked);
         setFieldEnabled(fields.enableRadicle, fields.startRadicleRow, fields.startRadicle);
         setEnsRpcStatus('', '');
+      };
+
+      let cachedSettings = null;
+      let cachedRegistry = null;
+
+      // Render the Swarm-mode row based on (beeNodeMode, registry.bee.mode).
+      // The toggle metaphor doesn't fit here: turning light mode ON requires a
+      // multi-step funding/chequebook/stamp flow (handled by the wallet
+      // sidebar's publish-setup checklist), while turning it OFF is a one-click
+      // revert. So we render an asymmetric row: setup-link vs revert-button.
+      const renderSwarmModeRow = (settings, registry) => {
+        const beeMode = settings?.beeNodeMode === 'light' ? 'light' : 'ultraLight';
+        const registryMode = registry?.bee?.mode || 'none';
+
+        // Use onclick (not addEventListener) so each render atomically replaces
+        // the prior handler — handler closes over the current state, and we
+        // re-render across state transitions.
+        const showAction = (label, handler) => {
+          swarmModeBtn.hidden = false;
+          swarmModeBtn.disabled = false;
+          swarmModeBtn.textContent = label;
+          swarmModeBtn.onclick = handler;
+        };
+
+        const hideAction = () => {
+          swarmModeBtn.hidden = true;
+          swarmModeBtn.onclick = null;
+        };
+
+        if (registryMode === 'reused' || registryMode === 'external') {
+          swarmModeHelp.textContent =
+            'Connected to an external Swarm node — mode is managed there.';
+          hideAction();
+          return;
+        }
+
+        if (registryMode === 'starting' || registryMode === 'stopping') {
+          swarmModeHelp.textContent = 'Switching…';
+          swarmModeBtn.hidden = false;
+          swarmModeBtn.disabled = true;
+          swarmModeBtn.textContent = 'Please wait';
+          swarmModeBtn.onclick = null;
+          return;
+        }
+
+        if (registryMode === 'none' || registryMode === 'error') {
+          swarmModeHelp.textContent = 'Start the Swarm node to configure its mode.';
+          hideAction();
+          return;
+        }
+
+        if (beeMode === 'light') {
+          swarmModeHelp.textContent = 'Light — node can publish to Swarm.';
+          showAction('Switch back to ultra-light', async () => {
+            swarmModeBtn.disabled = true;
+            const ok = await freedomAPI.saveSettings({ beeNodeMode: 'ultraLight' });
+            if (!ok) swarmModeBtn.disabled = false;
+          });
+          return;
+        }
+
+        swarmModeHelp.textContent =
+          'Ultra-light — read-only. Set up publishing to switch to light mode.';
+        showAction('Set up publishing →', () => {
+          freedomAPI.openPublishSetup().catch(() => {});
+        });
+      };
+
+      const refreshSwarmModeRow = async () => {
+        try {
+          cachedRegistry = await freedomAPI.getServiceRegistry();
+        } catch {
+          cachedRegistry = null;
+        }
+        renderSwarmModeRow(cachedSettings, cachedRegistry);
       };
 
       const save = async () => {
@@ -779,7 +850,6 @@
       fields.themeMode.addEventListener('change', save);
       fields.startBee.addEventListener('change', save);
       fields.startIpfs.addEventListener('change', save);
-      fields.enableBeeLight.addEventListener('change', save);
       fields.enableRadicle.addEventListener('change', () => {
         setFieldEnabled(fields.enableRadicle, fields.startRadicleRow, fields.startRadicle);
         save();
@@ -830,11 +900,17 @@
       };
 
       // Broadcasts from main keep a second open settings tab in sync; skip the
-      // re-render when the payload matches what's already on screen so we
+      // form re-render when the payload matches what's already on screen so we
       // don't clobber an in-flight edit (e.g. the ENS RPC input mid-type).
+      // Always refresh the Swarm-mode row — beeNodeMode lives outside the form
+      // and a flip changes the registry too.
       freedomAPI.onSettingsUpdated?.((settings) => {
-        if (!settings || formStateMatches(settings)) return;
-        applyFormState(settings);
+        if (!settings) return;
+        cachedSettings = settings;
+        if (!formStateMatches(settings)) {
+          applyFormState(settings);
+        }
+        refreshSwarmModeRow();
       });
 
       (async () => {
@@ -852,8 +928,14 @@
         }
 
         try {
-          const settings = await freedomAPI.getSettings();
+          const [settings, registry] = await Promise.all([
+            freedomAPI.getSettings(),
+            freedomAPI.getServiceRegistry().catch(() => null),
+          ]);
+          cachedSettings = settings;
+          cachedRegistry = registry;
           applyFormState(settings);
+          renderSwarmModeRow(settings, registry);
         } catch {
           setEnsRpcStatus('Failed to load settings', 'error');
         }
