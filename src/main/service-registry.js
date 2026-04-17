@@ -20,7 +20,7 @@ const MODE = {
 const registry = {
   ipfs: {
     api: null, // e.g., 'http://127.0.0.1:5001'
-    gateway: null, // e.g., 'http://127.0.0.1:8080'
+    gateway: null, // e.g., 'http://localhost:8080'
     mode: MODE.NONE,
     statusMessage: null,
     tempMessage: null,

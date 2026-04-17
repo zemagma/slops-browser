@@ -79,7 +79,7 @@ function addFileViaApi(port, content, fileName = 'index.html') {
             // The /add endpoint returns one JSON object per line; we only add one file.
             const line = data.trim().split('\n')[0];
             resolve(JSON.parse(line));
-          } catch (e) {
+          } catch {
             reject(new Error(`Failed to parse /add response: ${data}`));
           }
         });

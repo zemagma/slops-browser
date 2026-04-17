@@ -3,11 +3,10 @@ export const ensureTrailingSlash = (value = '') => (value.endsWith('/') ? value 
 // decodeURIComponent throws on malformed `%` sequences that show up in
 // user-typed URLs; fall back to the raw value in that case.
 const decodeAndTrim = (value) => {
-  const stripped = value.replace(/\/+$/, '');
   try {
     return decodeURIComponent(value).replace(/\/+$/, '');
   } catch {
-    return stripped;
+    return value.replace(/\/+$/, '');
   }
 };
 
@@ -400,17 +399,30 @@ export const parseIpfsInput = (rawInput, ipfsRoutePrefix) => {
 };
 
 /**
- * Recognise a Kubo subdomain-gateway URL and extract the CID + namespace.
- * Matches hostnames like "<cid>.ipfs.localhost" or "<cid>.ipns.localhost".
+ * Recognise a Kubo subdomain-gateway URL and extract the CID/name + namespace.
+ * Matches hostnames like:
+ *   - "<cid>.ipfs.localhost"              (CIDv1 base32 or libp2p base36)
+ *   - "<name>.ipns.localhost"             (IPNS key)
+ *   - "<dns.name>.ipns.localhost"         (DNSLink, dots preserved)
+ *   - "<dns-name>.ipns.localhost"         (DNSLink, dots inlined to dashes)
+ * Reverses Kubo's inline-DNSLink rule (. → -, - → --) for IPNS labels
+ * containing dashes so `docs-ipfs-tech.ipns.localhost` round-trips back to
+ * `ipns://docs.ipfs.tech`.
  * @param {URL} parsed
  * @returns {{cid: string, namespace: 'ipfs'|'ipns'}|null}
  */
 const matchIpfsSubdomain = (parsed) => {
   if (!parsed) return null;
   const hostname = parsed.hostname.toLowerCase();
-  const m = hostname.match(/^([a-z0-9]+)\.(ipfs|ipns)\.localhost$/);
+  const m = hostname.match(/^([a-z0-9][a-z0-9.-]*)\.(ipfs|ipns)\.localhost$/);
   if (!m) return null;
-  return { cid: m[1], namespace: m[2] };
+  let label = m[1];
+  if (m[2] === 'ipns' && label.includes('-')) {
+    // Greedy `--?` matches `--` in preference to `-`, so the callback cleanly
+    // reverses Kubo's rule (. → -, - → --) in a single pass.
+    label = label.replace(/--?/g, (match) => (match === '--' ? '-' : '.'));
+  }
+  return { cid: label, namespace: m[2] };
 };
 
 /**

@@ -358,6 +358,30 @@ describe('url-utils', () => {
         deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
       ).toBe('ipns://k51qzi5uqu5dlvj/foo');
     });
+
+    test('reverses inline-DNSLink dashes back to dots on ipns subdomain', () => {
+      // Kubo's InlineDNSLink rule maps "docs.ipfs.tech" → "docs-ipfs-tech".
+      const url = 'http://docs-ipfs-tech.ipns.localhost:8080/install';
+      expect(
+        deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
+      ).toBe('ipns://docs.ipfs.tech/install');
+    });
+
+    test('reverses inline-DNSLink escaped dashes (-- → -)', () => {
+      // "foo-bar.baz" inlines to "foo--bar-baz" (dashes doubled first, then dots → dashes).
+      const url = 'http://foo--bar-baz.ipns.localhost:8080/';
+      expect(
+        deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
+      ).toBe('ipns://foo-bar.baz');
+    });
+
+    test('preserves dotted DNS name on ipns multi-label subdomain', () => {
+      // Kubo with InlineDNSLink disabled (default) keeps dots in the subdomain.
+      const url = 'http://docs.ipfs.tech.ipns.localhost:8080/install';
+      expect(
+        deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
+      ).toBe('ipns://docs.ipfs.tech/install');
+    });
   });
 
   // ============ IPFS Tests ============
