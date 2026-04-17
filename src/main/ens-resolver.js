@@ -17,6 +17,10 @@ const UR_ABI = [
 
 // bytes4(keccak256("contenthash(bytes32)"))
 const CONTENTHASH_SELECTOR = '0xbc1c4a73';
+// bytes4(keccak256("addr(bytes32)"))
+const ADDR_SELECTOR = '0x3b3b57de';
+// 32-byte zero-padded address(0) — ABI-encoded `address` result for "no addr record set".
+const ZERO_ADDR_BYTES = '0x' + '0'.repeat(64);
 
 // ENS contenthash byte patterns (EIP-1577). We preserve the CIDv0 base58
 // output ("QmFoo…") for IPFS/IPNS to stay byte-compatible with the
@@ -328,9 +332,8 @@ function cacheContentResult(normalized, result) {
 }
 
 // Resolve an ENS name's primary ETH address (the `addr` record).
-// Uses provider.resolveName() which handles resolver lookup, addr(bytes32),
-// and CCIP-Read — so .eth, subdomains, and .box names all work via the
-// same path as address-bar content resolution.
+// Single UR call (vs ethers' registry → addr 2-step flow); CCIP-Read
+// handled transparently via OffchainLookup.
 async function resolveEnsAddress(name) {
   const trimmed = (name || '').trim();
   if (!trimmed) {
@@ -341,32 +344,14 @@ async function resolveEnsAddress(name) {
 
   const cached = ensAddressCache.get(normalized);
   if (cached && Date.now() - cached.timestamp < ENS_CACHE_TTL_MS) {
-    log.info(`[ens] Address cache hit for ${normalized} -> ${cached.address}`);
-    return { success: true, name: normalized, address: cached.address };
+    log.info(`[ens] Address cache hit for ${normalized} → ${cached.result.address || cached.result.reason}`);
+    return cached.result;
   }
 
   let lastError;
   for (let attempt = 1; attempt <= MAX_RESOLUTION_RETRIES; attempt++) {
     try {
-      const provider = await getWorkingProvider();
-      log.info(
-        `[ens] Resolving address record for: ${normalized}${attempt > 1 ? ` (attempt ${attempt})` : ''}`
-      );
-
-      const address = await provider.resolveName(normalized);
-
-      if (!address) {
-        return {
-          success: false,
-          name: normalized,
-          reason: 'NO_ADDRESS',
-          error: `No address record set for ${normalized}`,
-        };
-      }
-
-      ensAddressCache.set(normalized, { address, timestamp: Date.now() });
-      log.info(`[ens] Resolved address: ${normalized} -> ${address}`);
-      return { success: true, name: normalized, address };
+      return await doResolveEnsAddress(normalized);
     } catch (err) {
       lastError = err;
       if (isProviderError(err) && attempt < MAX_RESOLUTION_RETRIES) {
@@ -381,6 +366,74 @@ async function resolveEnsAddress(name) {
   }
 
   throw lastError;
+}
+
+async function doResolveEnsAddress(normalized) {
+  const provider = await getWorkingProvider();
+  const node = ethers.namehash(normalized);
+  const callData = ADDR_SELECTOR + node.slice(2);
+
+  let urResult;
+  try {
+    urResult = await universalResolverCall(provider, normalized, callData);
+  } catch (err) {
+    if (isProviderError(err)) throw err;
+    if (isResolverNotFoundError(err)) {
+      return cacheAddressResult(normalized, {
+        success: false,
+        name: normalized,
+        reason: 'NO_ADDRESS',
+        error: `No address record set for ${normalized}`,
+      });
+    }
+    log.info(`[ens] UR addr resolve failed for ${normalized}: ${err.message}`);
+    return cacheAddressResult(normalized, {
+      success: false,
+      name: normalized,
+      reason: 'RESOLUTION_ERROR',
+      error: err.message,
+    });
+  }
+
+  // The resolver's addr(bytes32) returns address — 32 bytes of ABI-encoded
+  // address. Empty or zero → no addr record set.
+  if (!urResult.bytes || urResult.bytes === '0x' || urResult.bytes === ZERO_ADDR_BYTES) {
+    return cacheAddressResult(normalized, {
+      success: false,
+      name: normalized,
+      reason: 'NO_ADDRESS',
+      error: `No address record set for ${normalized}`,
+    });
+  }
+
+  let address;
+  try {
+    [address] = ethers.AbiCoder.defaultAbiCoder().decode(['address'], urResult.bytes);
+  } catch (err) {
+    log.warn(`[ens] Failed to decode addr bytes for ${normalized}: ${err.message}`);
+    return cacheAddressResult(normalized, {
+      success: false,
+      name: normalized,
+      reason: 'RESOLUTION_ERROR',
+      error: err.message,
+    });
+  }
+
+  return cacheAddressResult(normalized, {
+    success: true,
+    name: normalized,
+    address,
+  });
+}
+
+function cacheAddressResult(normalized, result) {
+  ensAddressCache.set(normalized, { result, timestamp: Date.now() });
+  if (result.success) {
+    log.info(`[ens] Resolved address: ${normalized} → ${result.address}`);
+  } else {
+    log.info(`[ens] ${result.reason} for ${normalized}`);
+  }
+  return result;
 }
 
 // Test an RPC URL by connecting and fetching the block number.

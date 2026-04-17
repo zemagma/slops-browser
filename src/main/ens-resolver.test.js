@@ -293,8 +293,17 @@ describe('ens-resolver', () => {
   });
 
   describe('resolveEnsAddress', () => {
+    // Wrap an address as the UR's (bytes, address) return value where `bytes`
+    // is the ABI-encoded `address` output of the resolver's addr(bytes32).
+    function urReturnsAddress(address) {
+      const inner = actualEthers.AbiCoder.defaultAbiCoder().encode(['address'], [address]);
+      return urReturnsBytes(inner);
+    }
+
     test('resolves ENS name to its addr record', async () => {
-      mockResolveName.mockResolvedValue('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045');
+      mockUrResolve.mockResolvedValue(
+        urReturnsAddress('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045')
+      );
 
       const result = await resolveEnsAddress('vitalik.eth');
 
@@ -303,21 +312,21 @@ describe('ens-resolver', () => {
         name: 'vitalik.eth',
         address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
       });
-      expect(mockResolveName).toHaveBeenCalledWith('vitalik.eth');
     });
 
-    test('normalizes mixed-case input to lowercase before resolving', async () => {
-      mockResolveName.mockResolvedValue('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045');
+    test('normalizes mixed-case input to lowercase', async () => {
+      mockUrResolve.mockResolvedValue(
+        urReturnsAddress('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045')
+      );
 
       const result = await resolveEnsAddress('Mixed.ETH');
 
       expect(result.success).toBe(true);
       expect(result.name).toBe('mixed.eth');
-      expect(mockResolveName).toHaveBeenCalledWith('mixed.eth');
     });
 
-    test('returns NO_ADDRESS when the name has no addr record', async () => {
-      mockResolveName.mockResolvedValue(null);
+    test('returns NO_ADDRESS for zero-address return (resolver says no addr set)', async () => {
+      mockUrResolve.mockResolvedValue(urReturnsAddress('0x0000000000000000000000000000000000000000'));
 
       const result = await resolveEnsAddress('no-addr.eth');
 
@@ -329,6 +338,36 @@ describe('ens-resolver', () => {
       });
     });
 
+    test('returns NO_ADDRESS for empty bytes return', async () => {
+      mockUrResolve.mockResolvedValue(urReturnsBytes('0x'));
+
+      const result = await resolveEnsAddress('empty-bytes.eth');
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe('NO_ADDRESS');
+    });
+
+    test('maps UR ResolverNotFound revert to NO_ADDRESS', async () => {
+      mockUrResolve.mockRejectedValue(
+        new Error('execution reverted: ResolverNotFound("unreg.eth")')
+      );
+
+      const result = await resolveEnsAddress('unreg.eth');
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe('NO_ADDRESS');
+    });
+
+    test('maps generic UR revert to RESOLUTION_ERROR', async () => {
+      mockUrResolve.mockRejectedValue(new Error('some other revert reason'));
+
+      const result = await resolveEnsAddress('broken.eth');
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe('RESOLUTION_ERROR');
+      expect(result.error).toContain('some other revert');
+    });
+
     test('throws on empty name', async () => {
       await expect(resolveEnsAddress('')).rejects.toThrow('ENS name is empty');
       await expect(resolveEnsAddress('   ')).rejects.toThrow('ENS name is empty');
@@ -338,27 +377,50 @@ describe('ens-resolver', () => {
       const providerError = new Error('server error');
       providerError.code = 'SERVER_ERROR';
 
-      mockResolveName
+      mockUrResolve
         .mockRejectedValueOnce(providerError)
-        .mockResolvedValueOnce('0x0000000000000000000000000000000000000001');
+        .mockResolvedValueOnce(urReturnsAddress('0x0000000000000000000000000000000000000001'));
 
       const result = await resolveEnsAddress('retry.eth');
 
       expect(result.success).toBe(true);
       expect(result.address).toBe('0x0000000000000000000000000000000000000001');
-      expect(mockResolveName).toHaveBeenCalledTimes(2);
+      expect(mockUrResolve).toHaveBeenCalledTimes(2);
     });
 
     test('caches successful resolutions', async () => {
-      mockResolveName.mockResolvedValue('0x1111111111111111111111111111111111111111');
+      mockUrResolve.mockResolvedValue(
+        urReturnsAddress('0x1111111111111111111111111111111111111111')
+      );
 
-      const first = await resolveEnsAddress('cached.eth');
-      const second = await resolveEnsAddress('cached.eth');
+      const first = await resolveEnsAddress('cached-addr.eth');
+      const second = await resolveEnsAddress('cached-addr.eth');
 
       expect(first.address).toBe('0x1111111111111111111111111111111111111111');
       expect(second.address).toBe('0x1111111111111111111111111111111111111111');
-      // Second call hits the cache, so resolveName is only invoked once.
-      expect(mockResolveName).toHaveBeenCalledTimes(1);
+      expect(mockUrResolve).toHaveBeenCalledTimes(1);
+    });
+
+    test('caches negative results too (NO_ADDRESS misses)', async () => {
+      mockUrResolve.mockResolvedValue(urReturnsAddress('0x0000000000000000000000000000000000000000'));
+
+      const first = await resolveEnsAddress('no-addr-cached.eth');
+      const second = await resolveEnsAddress('no-addr-cached.eth');
+
+      expect(first.reason).toBe('NO_ADDRESS');
+      expect(second.reason).toBe('NO_ADDRESS');
+      // Second call hit the cache, no second RPC round-trip.
+      expect(mockUrResolve).toHaveBeenCalledTimes(1);
+    });
+
+    test('makes exactly one UR call per cold resolution (perf regression guard)', async () => {
+      mockUrResolve.mockResolvedValue(
+        urReturnsAddress('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045')
+      );
+
+      await resolveEnsAddress('oneshot-addr.eth');
+
+      expect(mockUrResolve).toHaveBeenCalledTimes(1);
     });
   });
 
