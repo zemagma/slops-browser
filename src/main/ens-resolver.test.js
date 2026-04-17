@@ -71,11 +71,16 @@ beforeEach(() => {
   mockLoadSettings.mockReturnValue({ enableEnsCustomRpc: false, ensRpcUrl: '' });
 });
 
-// Helpers for building mocked UR responses.
+// Helpers for building mocked UR responses. The UR returns
+// [resolvedData, resolverAddress] where resolvedData is the RAW
+// ABI-encoded response of the resolver function — its shape depends
+// on that function's return type. For `contenthash() returns (bytes)`
+// it's ABI-encoded `(bytes)`; for `addr() returns (address)` it's the
+// 32-byte address directly. Each helper mirrors one of those shapes.
 const actualEthers = jest.requireActual('ethers').ethers;
 const FAKE_RESOLVER = '0x0000000000000000000000000000000000001234';
 
-// Wrap raw contenthash hex bytes as the UR's ABI-encoded (bytes) return.
+// For contenthash-like (dynamic `bytes` return): wrap inner hex as ABI (bytes).
 function urReturnsBytes(innerHex) {
   const wrapped = actualEthers.AbiCoder.defaultAbiCoder().encode(['bytes'], [innerHex]);
   return [wrapped, FAKE_RESOLVER];
@@ -99,11 +104,11 @@ function swarmContenthashFor(hash64Hex) {
   return '0xe40101fa011b20' + hash64Hex;
 }
 
-// Wrap an address as the UR's return where `bytes` is the ABI-encoded
-// `address` output of the resolver's addr(bytes32).
+// For addr-like (static `address` return): the UR's resolvedData is just
+// the 32-byte ABI-encoded address. No bytes-wrapper.
 function urReturnsAddress(address) {
-  const inner = actualEthers.AbiCoder.defaultAbiCoder().encode(['address'], [address]);
-  return urReturnsBytes(inner);
+  const encoded = actualEthers.AbiCoder.defaultAbiCoder().encode(['address'], [address]);
+  return [encoded, FAKE_RESOLVER];
 }
 
 describe('ens-resolver', () => {
@@ -344,15 +349,6 @@ describe('ens-resolver', () => {
         reason: 'NO_ADDRESS',
         error: 'No address record set for no-addr.eth',
       });
-    });
-
-    test('returns NO_ADDRESS for empty bytes return', async () => {
-      mockUrResolve.mockResolvedValue(urReturnsBytes('0x'));
-
-      const result = await resolveEnsAddress('empty-bytes.eth');
-
-      expect(result.success).toBe(false);
-      expect(result.reason).toBe('NO_ADDRESS');
     });
 
     test('maps UR ResolverNotFound revert to NO_ADDRESS', async () => {
@@ -615,27 +611,21 @@ describe('ens-resolver', () => {
   });
 
   describe('universalResolverCall', () => {
-    const actualEthers = jest.requireActual('ethers').ethers;
-    const FAKE_RESOLVER = '0x0000000000000000000000000000000000001234';
-
-    // Helper: wrap raw hex bytes as the UR's ABI-encoded `(bytes)` return value.
-    const wrapAsUrBytes = (innerHex) => {
-      const coder = actualEthers.AbiCoder.defaultAbiCoder();
-      return coder.encode(['bytes'], [innerHex]);
-    };
-
-    test('encodes name, opts into CCIP-Read, and unwraps inner bytes', async () => {
-      const inner = '0xdeadbeef';
-      mockUrResolve.mockResolvedValue([wrapAsUrBytes(inner), FAKE_RESOLVER]);
+    test('encodes name, opts into CCIP-Read, returns raw resolvedData', async () => {
+      const rawResponse = actualEthers.AbiCoder.defaultAbiCoder().encode(
+        ['bytes'],
+        ['0xdeadbeef']
+      );
+      mockUrResolve.mockResolvedValue([rawResponse, FAKE_RESOLVER]);
 
       const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-      const callData = '0xbc1c4a73' + actualEthers.namehash('vitalik.eth').slice(2);
+      const callData = '0xbc1c58d1' + actualEthers.namehash('vitalik.eth').slice(2);
       const result = await universalResolverCall(provider, 'vitalik.eth', callData);
 
-      expect(result.bytes.toLowerCase()).toBe(inner);
+      // Returns raw ABI-encoded response — caller decodes per return type.
+      expect(result.resolvedData).toBe(rawResponse);
       expect(result.resolverAddress).toBe(FAKE_RESOLVER);
 
-      // Verify the call shape the UR actually received
       expect(mockUrResolve).toHaveBeenCalledTimes(1);
       const [encodedName, passedCallData, overrides] = mockUrResolve.mock.calls[0];
       expect(encodedName).toBe(actualEthers.dnsEncode('vitalik.eth', 255));
@@ -644,9 +634,9 @@ describe('ens-resolver', () => {
     });
 
     test('constructs Contract with UR address and minimal ABI', async () => {
-      mockUrResolve.mockResolvedValue([wrapAsUrBytes('0x'), FAKE_RESOLVER]);
+      mockUrResolve.mockResolvedValue(['0x', FAKE_RESOLVER]);
       const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-      await universalResolverCall(provider, 'vitalik.eth', '0xbc1c4a73');
+      await universalResolverCall(provider, 'vitalik.eth', '0xbc1c58d1');
 
       expect(ethers.Contract).toHaveBeenCalledWith(
         '0x5a9236e72a66d3e08b83dcf489b4d850792b6009',
@@ -660,29 +650,30 @@ describe('ens-resolver', () => {
       mockUrResolve.mockRejectedValue(err);
       const provider = new ethers.JsonRpcProvider('http://localhost:8545');
       await expect(
-        universalResolverCall(provider, 'unregistered.eth', '0xbc1c4a73')
+        universalResolverCall(provider, 'unregistered.eth', '0xbc1c58d1')
       ).rejects.toThrow('ResolverNotFound');
     });
   });
 
   describe('universalResolverMulticall', () => {
-    test('encodes name, opts into CCIP-Read, and unwraps per-call inner bytes', async () => {
-      const coder = actualEthers.AbiCoder.defaultAbiCoder();
-      // Simulate three resolver responses (e.g. addr + text + contenthash).
-      const inner1 = '0xdeadbeef';
-      const inner2 = '0xfeedface';
-      const inner3 = '0x';
-      mockUrResolveMulticall.mockResolvedValue([
-        coder.encode(['bytes'], [inner1]),
-        coder.encode(['bytes'], [inner2]),
-        coder.encode(['bytes'], [inner3]),
-      ]);
+    test('encodes name, opts into CCIP-Read, returns raw per-call responses', async () => {
+      // Simulate three responses with different return-type shapes, as the
+      // real UR would: (address), (bytes), (string) — each raw-ABI-encoded.
+      const r1 = actualEthers.AbiCoder.defaultAbiCoder().encode(
+        ['address'],
+        ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045']
+      );
+      const r2 = actualEthers.AbiCoder.defaultAbiCoder().encode(['bytes'], ['0xdeadbeef']);
+      const r3 = actualEthers.AbiCoder.defaultAbiCoder().encode(['string'], ['hello']);
+      mockUrResolveMulticall.mockResolvedValue([r1, r2, r3]);
 
       const provider = new ethers.JsonRpcProvider('http://localhost:8545');
-      const calls = ['0x3b3b57de', '0xbc1c4a73', '0x59d1d43c'];
+      const calls = ['0x3b3b57de', '0xbc1c58d1', '0x59d1d43c'];
       const results = await universalResolverMulticall(provider, 'vitalik.eth', calls);
 
-      expect(results.map((r) => r.toLowerCase())).toEqual([inner1, inner2, inner3]);
+      // Results are the raw per-call ABI-encoded responses. Caller decodes
+      // each per its specific return type.
+      expect(results).toEqual([r1, r2, r3]);
 
       expect(mockUrResolveMulticall).toHaveBeenCalledTimes(1);
       const [encodedName, passedCalls, overrides] = mockUrResolveMulticall.mock.calls[0];

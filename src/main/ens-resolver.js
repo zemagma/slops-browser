@@ -18,7 +18,7 @@ const UR_ABI = [
 ];
 
 // bytes4(keccak256("contenthash(bytes32)"))
-const CONTENTHASH_SELECTOR = '0xbc1c4a73';
+const CONTENTHASH_SELECTOR = '0xbc1c58d1';
 // bytes4(keccak256("addr(bytes32)"))
 const ADDR_SELECTOR = '0x3b3b57de';
 
@@ -192,15 +192,18 @@ function isResolverNotFoundError(err) {
 //
 // CCIP-Read is opted into per-call here because ethers v6 doesn't enable it
 // by default — needed for .box domains resolved via 3DNS.
+// Call UR.resolve for an arbitrary resolver function. Returns the raw
+// ABI-encoded response — the caller must decode per their function's
+// return type (e.g. decode(['bytes'], ...) for contenthash, or
+// decode(['address'], ...) for addr). Returning pre-decoded bytes here
+// would silently work for dynamic returns and overflow for static ones.
 async function universalResolverCall(provider, name, callData) {
   const ur = new ethers.Contract(UNIVERSAL_RESOLVER_ADDRESS, UR_ABI, provider);
   const encodedName = ethers.dnsEncode(name, 255);
   const [resolvedData, resolverAddress] = await ur.resolve(encodedName, callData, {
     enableCcipRead: true,
   });
-  // UR returns the resolver's ABI-encoded response as `bytes`; unwrap it.
-  const [bytes] = ethers.AbiCoder.defaultAbiCoder().decode(['bytes'], resolvedData);
-  return { bytes, resolverAddress };
+  return { resolvedData, resolverAddress };
 }
 
 // Batch multiple resolver lookups on the same ENS name through the UR.
@@ -217,8 +220,9 @@ async function universalResolverMulticall(provider, name, callDatas) {
   const results = await ur.resolveMulticall(encodedName, callDatas, {
     enableCcipRead: true,
   });
-  const coder = ethers.AbiCoder.defaultAbiCoder();
-  return results.map((r) => coder.decode(['bytes'], r)[0]);
+  // Each entry is the raw ABI-encoded response of the Nth call — caller
+  // decodes per each call's return type.
+  return [...results];
 }
 
 async function resolveEnsContent(name) {
@@ -242,7 +246,6 @@ async function doResolveEnsContent(normalized) {
         name: normalized,
       });
     }
-    // CCIP-Read gateway failures, resolver reverts, etc.
     log.info(`[ens] UR resolve failed for ${normalized}: ${err.message}`);
     return cacheContentResult(normalized, {
       type: 'not_found',
@@ -252,7 +255,22 @@ async function doResolveEnsContent(normalized) {
     });
   }
 
-  if (!urResult.bytes || urResult.bytes === '0x') {
+  // contenthash() returns dynamic `bytes` — ABI-unwrap to get the raw
+  // multicodec-prefixed content-hash bytes.
+  let innerBytes;
+  try {
+    [innerBytes] = ethers.AbiCoder.defaultAbiCoder().decode(['bytes'], urResult.resolvedData);
+  } catch (err) {
+    log.warn(`[ens] Failed to decode contenthash bytes for ${normalized}: ${err.message}`);
+    return cacheContentResult(normalized, {
+      type: 'unsupported',
+      reason: 'UNSUPPORTED_CONTENTHASH_FORMAT',
+      name: normalized,
+      contentHash: urResult.resolvedData,
+    });
+  }
+
+  if (!innerBytes || innerBytes === '0x') {
     return cacheContentResult(normalized, {
       type: 'not_found',
       reason: 'EMPTY_CONTENTHASH',
@@ -260,14 +278,14 @@ async function doResolveEnsContent(normalized) {
     });
   }
 
-  const parsed = parseContentHashBytes(urResult.bytes);
+  const parsed = parseContentHashBytes(innerBytes);
   if (!parsed) {
-    log.warn(`[ens] UNSUPPORTED_CONTENTHASH_FORMAT for ${normalized}: ${urResult.bytes}`);
+    log.warn(`[ens] UNSUPPORTED_CONTENTHASH_FORMAT for ${normalized}: ${innerBytes}`);
     return cacheContentResult(normalized, {
       type: 'unsupported',
       reason: 'UNSUPPORTED_CONTENTHASH_FORMAT',
       name: normalized,
-      contentHash: urResult.bytes,
+      contentHash: innerBytes,
     });
   }
 
@@ -376,13 +394,15 @@ async function doResolveEnsAddress(normalized) {
     });
   }
 
-  if (!urResult.bytes || urResult.bytes === '0x') {
+  // addr() returns `address` — the UR's resolvedData is the raw 32-byte
+  // ABI-encoded address, NOT bytes-wrapped. Decode directly.
+  if (!urResult.resolvedData || urResult.resolvedData === '0x') {
     return cacheAddressResult(normalized, noAddressResult(normalized));
   }
 
   let address;
   try {
-    [address] = ethers.AbiCoder.defaultAbiCoder().decode(['address'], urResult.bytes);
+    [address] = ethers.AbiCoder.defaultAbiCoder().decode(['address'], urResult.resolvedData);
   } catch (err) {
     log.warn(`[ens] Failed to decode addr bytes for ${normalized}: ${err.message}`);
     return cacheAddressResult(normalized, {
