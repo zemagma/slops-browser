@@ -547,6 +547,71 @@ describe('radicle-manager', () => {
     await ctx.mod.stopRadicle();
   });
 
+  test('getConnections silently reports zero peers while the node is still within the startup grace period', async () => {
+    jest.spyOn(global, 'setInterval').mockReturnValue(1);
+    jest.spyOn(global, 'clearInterval').mockImplementation(() => {});
+
+    let nodeStatusCalls = 0;
+    const execFileAsync = jest.fn((binary, args) => {
+      if (args[0] === 'node' && args[1] === 'status') {
+        nodeStatusCalls += 1;
+        const err = new Error(`Command failed: ${binary} node status`);
+        err.code = 1;
+        return Promise.reject(err);
+      }
+      return Promise.resolve({ stdout: '', stderr: '' });
+    });
+
+    const baseTime = 1_700_000_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(baseTime);
+
+    const ctx = loadRadicleManagerModule({
+      execFileAsync,
+      portSequence: [true],
+      httpResponse: (url) => {
+        if (url === 'http://127.0.0.1:8780/') {
+          return { statusCode: 200, body: { version: '0.1.0' } };
+        }
+        return { statusCode: 404, body: '' };
+      },
+    });
+
+    ctx.mod.registerRadicleIpc();
+
+    await ctx.mod.startRadicle();
+    await flushMicrotasks();
+
+    await expect(ctx.ipcMain.invoke(IPC.RADICLE_GET_STATUS)).resolves.toEqual({
+      status: 'running',
+      error: null,
+    });
+
+    // Well within the 30s startup grace — the transient failure should be
+    // swallowed and reported as zero peers with no error log.
+    nowSpy.mockReturnValue(baseTime + 5_000);
+    await expect(ctx.ipcMain.invoke(IPC.RADICLE_GET_CONNECTIONS)).resolves.toEqual(
+      success({ count: 0 })
+    );
+    expect(nodeStatusCalls).toBe(1);
+    expect(ctx.log.error).not.toHaveBeenCalledWith(
+      '[Radicle] Failed to get connections:',
+      expect.any(String)
+    );
+
+    // After the grace period the failure should surface as an error.
+    nowSpy.mockReturnValue(baseTime + 45_000);
+    await expect(ctx.ipcMain.invoke(IPC.RADICLE_GET_CONNECTIONS)).resolves.toEqual(
+      failure('GET_CONNECTIONS_FAILED', expect.any(String), undefined, { count: 0 })
+    );
+    expect(ctx.log.error).toHaveBeenCalledWith(
+      '[Radicle] Failed to get connections:',
+      expect.any(String)
+    );
+
+    nowSpy.mockRestore();
+    await ctx.mod.stopRadicle();
+  });
+
   test('starts a bundled node on a fallback port after a conflict and stops both processes cleanly', async () => {
     const execFileAsync = jest.fn().mockResolvedValue({ stdout: '', stderr: '' });
     const ctx = loadRadicleManagerModule({

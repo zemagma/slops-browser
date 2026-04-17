@@ -69,6 +69,13 @@ let radicleHttpdProcess = null;
 let healthCheckInterval = null;
 let pendingStart = false;
 let forceKillTimeout = null;
+// Timestamp (ms since epoch) of the most recent transition into RUNNING. Used by
+// getConnections to suppress transient `rad node status` errors while the node
+// is still bootstrapping its control socket.
+let runningSinceMs = null;
+// Grace period during which getConnections treats command failures as a silent
+// zero-peer count instead of logging a warning.
+const CONNECTIONS_STARTUP_GRACE_MS = 30_000;
 
 // Identity injection flag - when true, skip rad auth and use pre-injected identity
 let useInjectedIdentity = false;
@@ -217,6 +224,11 @@ function ensureIdentity(radHome) {
 
 function updateState(newState, error = null) {
   log.info('[Radicle] State change:', currentState, '->', newState, error ? `(error: ${error})` : '');
+  if (newState === STATUS.RUNNING && currentState !== STATUS.RUNNING) {
+    runningSinceMs = Date.now();
+  } else if (newState !== STATUS.RUNNING) {
+    runningSinceMs = null;
+  }
   currentState = newState;
   lastError = error;
   // Broadcast to all windows
@@ -1100,6 +1112,17 @@ async function getConnections() {
 
     return success({ count: connectedCount });
   } catch (err) {
+    // During the first few seconds after the node process starts, `rad node
+    // status` can exit non-zero because the control socket is not yet
+    // listening. Polling UIs call this every ~2s, which would otherwise flood
+    // the log with transient failures. Treat it as zero peers silently until
+    // the grace period elapses.
+    const withinStartupGrace =
+      runningSinceMs !== null &&
+      Date.now() - runningSinceMs < CONNECTIONS_STARTUP_GRACE_MS;
+    if (withinStartupGrace) {
+      return success({ count: 0 });
+    }
     log.error('[Radicle] Failed to get connections:', err.message);
     return failure('GET_CONNECTIONS_FAILED', err.message, undefined, { count: 0 });
   }
