@@ -335,6 +335,29 @@ describe('url-utils', () => {
         deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
       ).toBe('ipns://docs.ipfs.tech/index.html');
     });
+
+    test('converts ipfs subdomain-gateway url to ipfs://', () => {
+      const url =
+        'http://bafybeigh3oq6pwrkspwgj4jcguizd7muxw4zdyq6cckqi5vl72yixnzpvm.ipfs.localhost:8080/readme';
+      expect(
+        deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
+      ).toBe('ipfs://bafybeigh3oq6pwrkspwgj4jcguizd7muxw4zdyq6cckqi5vl72yixnzpvm/readme');
+    });
+
+    test('strips trailing slash on subdomain-gateway root', () => {
+      const url =
+        'http://bafybeigh3oq6pwrkspwgj4jcguizd7muxw4zdyq6cckqi5vl72yixnzpvm.ipfs.localhost:8080/';
+      expect(
+        deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
+      ).toBe('ipfs://bafybeigh3oq6pwrkspwgj4jcguizd7muxw4zdyq6cckqi5vl72yixnzpvm');
+    });
+
+    test('converts ipns subdomain-gateway url to ipns://', () => {
+      const url = 'http://k51qzi5uqu5dlvj.ipns.localhost:8080/foo';
+      expect(
+        deriveDisplayValue(url, BZZ_ROUTE_PREFIX, HOME_URL, IPFS_ROUTE_PREFIX, IPNS_ROUTE_PREFIX)
+      ).toBe('ipns://k51qzi5uqu5dlvj/foo');
+    });
   });
 
   // ============ IPFS Tests ============
@@ -452,6 +475,21 @@ describe('url-utils', () => {
     test('accepts URL object', () => {
       const url = new URL('http://127.0.0.1:8080/ipfs/QmTest/file.html');
       expect(deriveIpfsBaseFromUrl(url)).toBe('http://127.0.0.1:8080/ipfs/QmTest/');
+    });
+
+    test('extracts origin from ipfs subdomain-gateway url', () => {
+      const url =
+        'http://bafybeigh3oq6pwrkspwgj4jcguizd7muxw4zdyq6cckqi5vl72yixnzpvm.ipfs.localhost:8080/readme';
+      expect(deriveIpfsBaseFromUrl(url)).toBe(
+        'http://bafybeigh3oq6pwrkspwgj4jcguizd7muxw4zdyq6cckqi5vl72yixnzpvm.ipfs.localhost:8080/'
+      );
+    });
+
+    test('extracts origin from ipns subdomain-gateway url', () => {
+      const url = 'http://k51qzi5uqu5dlvj.ipns.localhost:8080/install';
+      expect(deriveIpfsBaseFromUrl(url)).toBe(
+        'http://k51qzi5uqu5dlvj.ipns.localhost:8080/'
+      );
     });
   });
 

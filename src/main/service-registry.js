@@ -222,7 +222,8 @@ function getIpfsApiUrl() {
  * Get URL for IPFS Gateway
  */
 function getIpfsGatewayUrl() {
-  return registry.ipfs.gateway || `http://127.0.0.1:${DEFAULTS.ipfs.gatewayPort}`;
+  // `localhost` triggers Kubo's default subdomain gateway (required for `_redirects`).
+  return registry.ipfs.gateway || `http://localhost:${DEFAULTS.ipfs.gatewayPort}`;
 }
 
 /**
