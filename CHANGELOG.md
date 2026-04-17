@@ -4,9 +4,18 @@ All notable changes to Freedom will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `ethereum:` URI scheme (EIP-681) routes to the wallet sidebar's Send screen with recipient, chain, and amount pre-filled. Lets any page offer a "Tip author" link like `<a href="ethereum:vitalik.eth@1?value=1e16">` — no wallet connection required. Native-asset sends only in this release; ERC-20 and other contract-call variants are rejected explicitly.
+
 ### Changed
 
 - Wallet send: recipient field now accepts ENS names (`.eth`, `.box`, subdomains). The name is resolved to its `addr` record on mainnet when you press Continue, and the review screen shows both the name and the resolved address so you can verify before confirming.
+- Wallet send screen now honors the chain selected on the main wallet view instead of defaulting to the first chain with a balance.
+
+### Fixed
+
+- dApp-connect wallet picker dropdown no longer shows through to the content below (had an undefined CSS variable in both themes).
 
 ## [0.6.2] - 2026-03-01
 

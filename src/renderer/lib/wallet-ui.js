@@ -17,7 +17,7 @@ import { initRpcSettings, closeRpcApiKeyScreen } from './wallet/rpc-settings.js'
 import { initDappConnect, showDappConnect, updateConnectionBanner } from './wallet/dapp-connect.js';
 import { initDappTx, showDappTxApproval } from './wallet/dapp-tx.js';
 import { initDappSign, showDappSignApproval } from './wallet/dapp-sign.js';
-import { initSend, closeSend } from './wallet/send.js';
+import { initSend, openSend, closeSend } from './wallet/send.js';
 import { initExportMnemonic, closeExportMnemonic } from './wallet/export-mnemonic.js';
 import { initWalletSelector, loadDerivedWallets } from './wallet/wallet-selector.js';
 import { initChainSwitcher, updateChainSwitcherDisplay, getSelectedChainId, setSelectedChainId } from './wallet/chain-switcher.js';
@@ -302,6 +302,20 @@ export function openPublishSetupFlow() {
   openSidebarPanel();
   switchTab('nodes');
   openPublishSetup();
+}
+
+// Open the wallet sidebar's Send screen with pre-filled recipient / chain /
+// amount. Used by the ethereum: URI scheme handler (EIP-681) so static web
+// pages can offer "Tip" links that route straight into the send flow.
+//
+// Same bail conditions as openPublishSetupFlow.
+export function openSendFlow({ recipient, chainId, amount } = {}) {
+  if (!isSidebarFeatureEnabled()) return false;
+  if (walletState.viewMode === 'setup') return false;
+  openSidebarPanel();
+  switchTab('wallet');
+  openSend({ recipient, chainId, amount });
+  return true;
 }
 
 /**

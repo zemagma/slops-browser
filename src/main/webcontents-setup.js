@@ -86,7 +86,8 @@ function registerWebContentsHandlers() {
           url.startsWith('bzz://') ||
           url.startsWith('ipfs://') ||
           url.startsWith('ipns://') ||
-          url.startsWith('rad:')
+          url.startsWith('rad:') ||
+          url.startsWith('ethereum:')
         ) {
           log.info(`${tag} intercepted custom protocol navigation: ${sanitizeUrlForLog(url)}`);
           event.preventDefault();

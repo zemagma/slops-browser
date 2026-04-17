@@ -407,6 +407,11 @@ function applySendOpenOptions(options = {}) {
     sendRecipientInput.value = options.recipient;
     sendTxState.recipient = options.recipient;
   }
+
+  if (options.amount && sendAmountInput) {
+    sendAmountInput.value = options.amount;
+    sendTxState.amount = options.amount;
+  }
 }
 
 function resolvePreferredSendToken(options = {}) {
@@ -664,7 +669,7 @@ async function handleSendMax() {
   }
 }
 
-function formatWeiToDecimal(wei, decimals = 18) {
+export function formatWeiToDecimal(wei, decimals = 18) {
   if (wei === 0n) return '0';
 
   const weiStr = wei.toString().padStart(decimals + 1, '0');

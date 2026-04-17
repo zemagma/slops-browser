@@ -44,6 +44,10 @@ import {
   getInternalPageName,
   parseEnsInput,
 } from './page-urls.js';
+import { parseEthereumUri } from './ethereum-uri.js';
+import { openSendFlow } from './wallet-ui.js';
+import { walletState } from './wallet/wallet-state.js';
+import { formatWeiToDecimal } from './wallet/send.js';
 
 // Helper to get active tab's navigation state (with fallback to empty object)
 const getNavState = () => getActiveTabState() || {};
@@ -241,6 +245,41 @@ const syncRadBase = (nextBase) => {
     });
 };
 
+// EIP-681 carries value in the chain's base unit (wei for ETH et al.); we
+// assume 18 decimals for the native token, correct for every chain freedom
+// currently ships with.
+const handleEthereumUri = (value) => {
+  const parsed = parseEthereumUri(value);
+  if (!parsed.ok) {
+    if (parsed.reason === 'UNSUPPORTED_FUNCTION') {
+      alert('ERC-20 and other contract-call ethereum: URIs are not yet supported.');
+    } else {
+      alert(`Malformed ethereum: URI: ${value}`);
+    }
+    return;
+  }
+
+  const chains = walletState.registeredChains;
+  if (!chains || Object.keys(chains).length === 0) {
+    alert('Wallet is still initializing — please try again in a moment.');
+    return;
+  }
+  if (!chains[parsed.chainId]) {
+    alert(`Chain ${parsed.chainId} is not supported by this wallet.`);
+    return;
+  }
+
+  const amount = parsed.value ? formatWeiToDecimal(BigInt(parsed.value)) : undefined;
+  const opened = openSendFlow({
+    recipient: parsed.target,
+    chainId: parsed.chainId,
+    amount,
+  });
+  if (!opened) {
+    alert('Enable Identity & Wallet (Settings → Experimental) to accept tips.');
+  }
+};
+
 export const loadTarget = (value, displayOverride = null, targetWebview = null) => {
   // Use provided webview or fall back to active webview
   const webview = targetWebview || getActiveWebview();
@@ -315,6 +354,12 @@ export const loadTarget = (value, displayOverride = null, targetWebview = null) 
 
   // Not viewing source for regular navigation
   isViewingSource = false;
+
+  // ethereum: URIs route to the wallet sidebar — no page load.
+  if (value.trim().toLowerCase().startsWith('ethereum:')) {
+    handleEthereumUri(value);
+    return;
+  }
 
   // Handle freedom:// protocol for internal pages
   const fbMatch = value.match(/^freedom:\/\/([a-zA-Z0-9-]+)$/i);

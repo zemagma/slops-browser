@@ -189,6 +189,16 @@ describe('webcontents-setup', () => {
       expect.stringContaining('intercepted custom protocol navigation')
     );
 
+    const ethEvent = {
+      preventDefault: jest.fn(),
+    };
+    contents.emit('will-navigate', ethEvent, 'ethereum:vitalik.eth@1?value=1e16');
+    expect(ethEvent.preventDefault).toHaveBeenCalled();
+    expect(parentWindow.webContents.send).toHaveBeenCalledWith(
+      'navigate-to-url',
+      'ethereum:vitalik.eth@1?value=1e16'
+    );
+
     const httpEvent = {
       preventDefault: jest.fn(),
     };
