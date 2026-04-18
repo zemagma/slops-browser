@@ -334,13 +334,6 @@ ipcRenderer.on('dapp:provider-event', (_event, { event, data }) => {
   }, window.location.origin);
 });
 
-ipcRenderer.on('dapp:provider-state', (_event, state) => {
-  window.postMessage({
-    type: 'FREEDOM_ETHEREUM_STATE',
-    state,
-  }, window.location.origin);
-});
-
 // ============================================
 // Swarm Provider (window.swarm)
 // ============================================

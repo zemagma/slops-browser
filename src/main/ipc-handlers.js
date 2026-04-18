@@ -42,6 +42,8 @@ try {
 const ethereumProviderInfoStatic = Object.freeze({
   name: pkg.build.productName,
   icon: ethereumProviderIconDataUri,
+  // rdns is EIP-6963's "reverse-DNS" identifier; build.appId (baby.freedom.browser)
+  // is already valid reverse-DNS of freedom.baby, so we reuse it.
   rdns: pkg.build.appId,
 });
 
@@ -234,11 +236,12 @@ function registerBaseIpcHandlers(callbacks = {}) {
   });
 
   ipcMain.on(IPC.GET_ETHEREUM_INJECT_SOURCE, (event) => {
-    // Fresh UUID per request — spec says unique per EIP-1193 session, scoped
-    // to a page's lifetime. Prepend as a global the IIFE picks up.
-    // Escape '<' as \u003c so a future field value containing '</script>' can't
-    // break out of the injected <script> tag (defense in depth; today's fields
-    // all come from package.json).
+    // One UUID per webview-preload load (i.e. per page session), stable
+    // across eip6963:requestProvider re-announcements within that session.
+    // Each new tab / reload is a fresh session and gets a fresh UUID.
+    // Escape '<' as \u003c so a future field value containing '</script>'
+    // can't break out of the injected <script> tag (defense in depth;
+    // today's fields all come from package.json).
     const info = { ...ethereumProviderInfoStatic, uuid: crypto.randomUUID() };
     const infoJson = JSON.stringify(info).replace(/</g, '\\u003c');
     const preamble = `window.__FREEDOM_PROVIDER_CONFIG__ = ${infoJson};\n`;

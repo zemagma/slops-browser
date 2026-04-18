@@ -374,21 +374,6 @@ describe('webview-preload-ethereum-inject', () => {
     });
   });
 
-  describe('state sync via FREEDOM_ETHEREUM_STATE', () => {
-    test('merges the delivered state into providerState', () => {
-      const { window, deliverMessage } = createInstance();
-
-      deliverMessage({
-        type: 'FREEDOM_ETHEREUM_STATE',
-        state: { chainId: '0x1', accounts: ['0xabc'], isConnected: true },
-      });
-
-      expect(window.ethereum.chainId).toBe('0x1');
-      expect(window.ethereum.selectedAddress).toBe('0xabc');
-      expect(window.ethereum.isConnected()).toBe(true);
-    });
-  });
-
   describe('legacy methods', () => {
     test('enable delegates to eth_requestAccounts', () => {
       const { window, postedMessages } = createInstance();

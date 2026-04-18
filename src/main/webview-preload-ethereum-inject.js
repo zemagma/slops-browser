@@ -1,12 +1,17 @@
 /**
  * Ethereum provider injection source.
  *
- * This file is read as text by webview-preload.js and injected into the page
- * context as a <script> body. It MUST NOT use Node-only APIs or CommonJS
- * requires — the code runs inside the target page's realm.
+ * IMPORTANT: this file is source-as-data. It never executes in a Node
+ * context — the main process reads it as text and serves it to the
+ * sandboxed webview preload, which injects it as a <script> body into the
+ * target page's realm. Running inside the page means: no `require`, no
+ * Electron APIs, no Node built-ins, no access to the preload's scope.
+ * Anything this file needs from the main/preload side must arrive via
+ * window.postMessage or the __FREEDOM_PROVIDER_CONFIG__ preamble.
  *
- * Kept in its own file so it can be unit-tested in isolation (load the
- * source, evaluate against a JSDOM window, assert the provider shape).
+ * Kept in its own file so it can be unit-tested in isolation (compile
+ * via `new Function('window', SOURCE)`, evaluate against a fake window,
+ * assert the provider shape).
  */
 (function () {
   const pendingRequests = new Map();
@@ -18,7 +23,7 @@
     accountsChanged: [],
     message: [],
   };
-  let providerState = { chainId: null, accounts: [], isConnected: false };
+  const providerState = { chainId: null, accounts: [], isConnected: false };
 
   function emitEvent(event, data) {
     if (eventListeners[event]) {
@@ -33,6 +38,11 @@
   }
 
   window.ethereum = {
+    // isMetaMask is kept intentionally alongside EIP-6963 announcement so
+    // older dapps that sniff window.ethereum.isMetaMask still connect.
+    // Modern dapps (Wagmi, Web3Modal, RainbowKit) pick us up via 6963
+    // instead and ignore this flag. Revisit dropping after ~6 months of
+    // 6963 adoption telemetry — see PR description for the tradeoff.
     isMetaMask: true,
     isFreedomBrowser: true,
     get chainId() {
@@ -148,8 +158,6 @@
         providerState.accounts = [];
       }
       emitEvent(event.data.event, event.data.data);
-    } else if (event.data.type === 'FREEDOM_ETHEREUM_STATE') {
-      providerState = { ...providerState, ...event.data.state };
     }
   });
 
