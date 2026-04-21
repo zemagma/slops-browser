@@ -1,85 +1,103 @@
-/* Tab bar */
+/* ── TITLE BAR (tab strip) ───────────────────────────────────────── */
 .title-bar {
   display: flex;
-  align-items: flex-end;
-  background-color: var(--bg);
+  align-items: center;
+  background-color: #fff;
+  background-image: var(--hatch);
+  background-size: var(--hatch-size);
   -webkit-app-region: drag;
-  padding: 6px 10px 0 8px;
-  min-height: 37px;
+  padding: 5px 8px 0;
+  min-height: 40px;
+  border-bottom: 2px solid #000;
   overflow: visible;
+  gap: 4px;
 }
 
 .title-bar-spacer {
-  width: 76px; /* Space for traffic lights + 12px gap */
+  width: 76px;
   flex-shrink: 0;
   align-self: stretch;
 }
 
 .title-bar-drag {
-  flex: 1 1 80px;
+  flex: 1 1 60px;
   align-self: stretch;
 }
 
+/* ── TAB BAR ─────────────────────────────────────────────────────── */
 .tab-bar {
   display: flex;
   align-items: flex-end;
-  gap: 0;
+  gap: 3px;
   -webkit-app-region: no-drag;
-  max-width: calc(100% - 160px); /* Leave space for spacer and drag area */
+  max-width: calc(100% - 120px);
   user-select: none;
 }
 
 .tabs-container {
   display: flex;
   align-items: flex-end;
-  gap: 0;
+  gap: 3px;
   overflow: hidden;
   flex: 0 1 auto;
   min-width: 0;
-  padding-left: 10px; /* Room for corner flare on left */
-  padding-right: 10px; /* Room for corner flare on right */
-  margin-left: -10px; /* Compensate for padding */
-  margin-right: -10px;
+  padding: 0 2px;
 }
 
-/* Base tab styles */
+/* ── BASE TAB ────────────────────────────────────────────────────── */
 .tab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  border: none;
-  font-size: 12px;
-  font-family: inherit;
+  gap: 6px;
+  border: 2px solid #000;
+  font-size: 9px;
+  font-family: var(--font-pixel);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   cursor: default;
   -webkit-app-region: no-drag;
   position: relative;
-  width: 230px;
+  width: 180px;
   flex-shrink: 1;
   min-width: 50px;
-  height: 30px;
-  margin-bottom: 4px;
+  height: 28px;
+  padding: 0 24px 0 8px;
+  background: #fff;
+  color: #666;
+  box-shadow: var(--shadow);
+  border-radius: 0;
   container-type: inline-size;
+  transition: background 0.1s ease;
 }
 
-/* Inactive tab - pill/button shape */
-.tab:not(.active) {
-  padding: 0 26px 0 8px; /* Extra right padding for close button */
-  margin-left: 3px;
-  margin-right: 3px;
-  background-color: transparent;
-  border-radius: 8px;
-  color: var(--muted);
-}
-
+/* Inactive hover */
 .tab:not(.active):hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+  background: #f5f5f5;
+  color: #000;
 }
 
-/* Tab drag-and-drop styles */
+/* ── ACTIVE TAB ──────────────────────────────────────────────────── */
+.tab.active {
+  height: 32px;
+  background: var(--accent);
+  border-color: #000;
+  color: #fff;
+  box-shadow: 2px 2px 0px #000;
+  z-index: 2;
+  padding-bottom: 0;
+}
+
+/* No corner curves needed — flat Lisa OS style */
+.tab-corner {
+  display: none;
+}
+
+/* ── TAB SEPARATOR ───────────────────────────────────────────────── */
+.tab-separator {
+  display: none;
+}
+
+/* ── DRAG STATE ──────────────────────────────────────────────────── */
 .tab.dragging {
   opacity: 0.5;
 }
@@ -88,84 +106,23 @@
 .tab.drag-over-right::after {
   content: '';
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  top: 2px;
+  bottom: 2px;
   width: 2px;
   background: var(--accent);
-  border-radius: 1px;
 }
 
 .tab.drag-over-left::before {
   left: -2px;
 }
-
 .tab.drag-over-right::after {
   right: -2px;
 }
 
-/* Tab separator */
-.tab-separator {
-  position: absolute;
-  right: -3px;
-  top: 50%;
-  transform: translate(50%, -50%);
-  width: 1px;
-  height: 16px;
-  background: var(--border);
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-/* Hide separator when tab is active or next to active */
-.tab.active .tab-separator,
-.tab.before-active .tab-separator {
-  opacity: 0;
-}
-
-/* Active tab - connected shape */
-.tab.active {
-  height: 34px;
-  padding: 0 26px 4px 8px; /* Extra right padding for close button */
-  margin-left: 3px;
-  margin-right: 3px;
-  margin-bottom: 0;
-  background: var(--toolbar);
-  border-radius: 10px 10px 0 0;
-  color: var(--text);
-  z-index: 2;
-  overflow: visible;
-}
-
-/* Corner curves for active tab */
-.tab-corner {
-  position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
-  pointer-events: none;
-  color: var(--toolbar);
-  overflow: visible;
-}
-
-.tab-corner-left {
-  left: -10px;
-}
-
-.tab-corner-right {
-  right: -10px;
-}
-
-.tab-corner svg {
-  display: block;
-  width: 10px;
-  height: 10px;
-  fill: currentColor;
-}
-
-/* Tab icon container - holds favicon, spinner, or default globe */
+/* ── TAB ICON ────────────────────────────────────────────────────── */
 .tab-icon-container {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   position: relative;
   display: flex;
@@ -176,8 +133,8 @@
 .tab-favicon,
 .tab-icon-default,
 .tab-icon-spinner {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   position: absolute;
   top: 0;
   left: 0;
@@ -186,19 +143,22 @@
 }
 
 .tab-favicon {
-  border-radius: 3px;
+  border-radius: 0;
   object-fit: contain;
 }
 
 .tab-icon-default {
-  stroke: var(--muted);
+  stroke: #666;
+}
+.tab.active .tab-icon-default {
+  stroke: #fff;
 }
 
 .tab-icon-spinner {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(0, 0, 0, 0.2);
   border-top-color: var(--accent);
   display: block;
   box-sizing: border-box;
@@ -206,19 +166,17 @@
   margin: 1px;
 }
 
-/* Show appropriate icon based on state */
 .tab-icon-container[data-state='default'] .tab-icon-default {
   opacity: 1;
 }
-
 .tab-icon-container[data-state='favicon'] .tab-favicon {
   opacity: 1;
 }
-
 .tab-icon-container[data-state='loading'] .tab-icon-spinner {
   opacity: 1;
 }
 
+/* ── TAB TITLE ───────────────────────────────────────────────────── */
 .tab-title {
   flex: 1;
   overflow: hidden;
@@ -228,14 +186,15 @@
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
 }
 
+/* ── TAB CLOSE BUTTON ────────────────────────────────────────────── */
 .tab-close {
   position: absolute;
-  right: 6px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
-  border: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid currentColor;
   background: transparent;
   color: inherit;
   cursor: default;
@@ -243,70 +202,65 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1;
-  transition: background-color 0.15s ease;
+  opacity: 0.6;
   z-index: 1;
 }
 
-.tab.active .tab-close {
-  top: calc(50% - 2px); /* Adjust for active tab's extra padding-bottom */
-}
-
 .tab-close:hover {
-  background: rgba(255, 255, 255, 0.15);
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.15);
+}
+.tab.active .tab-close:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
-/* Hide close button on narrow tabs */
 @container (max-width: 80px) {
   .tab-close {
     display: none;
   }
 }
-
-/* Always show close button on active tab (except pinned) */
 .tab.active:not(.pinned) .tab-close {
   display: flex !important;
 }
 
+/* ── NEW TAB BUTTON ──────────────────────────────────────────────── */
 .new-tab-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  border: 2px solid #000;
+  box-shadow: var(--shadow);
+  background: #fff;
+  color: #000;
   cursor: default;
-  border-radius: 50%;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   -webkit-app-region: no-drag;
   flex-shrink: 0;
-  flex-grow: 0;
-  margin-bottom: 5px;
-  margin-left: 4px;
+  margin-bottom: 2px;
+  margin-left: 3px;
 }
 
 .new-tab-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
 }
 
 .new-tab-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+  background: var(--accent);
+  color: #fff;
+  border-color: #000;
 }
 
-/* Pinned tabs */
+/* ── PINNED TABS ─────────────────────────────────────────────────── */
 .tab.pinned {
-  width: 36px;
-  min-width: 36px;
-  max-width: 36px;
-  padding: 0 10px;
+  width: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  padding: 0 8px;
   justify-content: center;
 }
 
@@ -316,5 +270,117 @@
 }
 
 .tab.pinned.active {
-  padding: 0 10px 4px 10px;
+  padding: 0 8px;
+}
+
+/* ── WINDOW CONTROLS (Linux) ─────────────────────────────────────── */
+.window-controls {
+  display: none; /* hidden by default, JS shows on Linux */
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.window-control-btn {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #000;
+  background: #fff;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  padding: 0;
+}
+
+.window-control-btn:hover {
+  background: #000;
+  color: #fff;
+}
+.window-control-close:hover {
+  background: var(--danger) !important;
+  border-color: var(--danger);
+  color: #fff;
+}
+
+/* ── SPIN ANIMATION ──────────────────────────────────────────────── */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── DARK MODE TAB OVERRIDES ─────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .title-bar {
+    background-color: #fff !important;
+  }
+  .tab {
+    background: #fff !important;
+    color: #666 !important;
+    border-color: #000 !important;
+  }
+  .tab.active {
+    background: #f97316 !important;
+    color: #fff !important;
+  }
+  .new-tab-btn {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .new-tab-btn:hover {
+    background: #f97316 !important;
+    color: #fff !important;
+  }
+}
+
+/* ── TAB TEXT COLORS (both themes) ──────────────────────────────── */
+/* Inactive tab — always dark text on white bg */
+.tab:not(.active) {
+  color: #333 !important;
+  background: #fff !important;
+}
+
+.tab:not(.active):hover {
+  background: #f5f5f5 !important;
+  color: #000 !important;
+}
+
+/* Active tab — always white text on orange */
+.tab.active {
+  color: #fff !important;
+  background: #f97316 !important;
+}
+
+/* ── TAB TITLE ALWAYS VISIBLE ────────────────────────────────────── */
+.tab-title {
+  color: inherit !important;
+}
+
+/* ── TAB CLOSE BUTTON — always visible ──────────────────────────── */
+.tab-close {
+  display: flex !important;
+  opacity: 0.5;
+  color: inherit;
+  border: 1px solid currentColor;
+}
+
+.tab-close:hover {
+  opacity: 1;
+}
+
+/* Only hide on very narrow non-active tabs */
+@container (max-width: 60px) {
+  .tab:not(.active) .tab-close {
+    display: none !important;
+  }
+}
+
+/* ── TAB ICON DEFAULT — match tab text color ─────────────────────── */
+.tab:not(.active) .tab-icon-default {
+  stroke: #666 !important;
+}
+.tab.active .tab-icon-default {
+  stroke: #fff !important;
 }

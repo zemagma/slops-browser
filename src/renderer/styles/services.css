@@ -1,312 +1,18 @@
+/* ── STATUS INDICATOR ────────────────────────────────────────────── */
 .status-indicator {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.bee-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-}
-
-.bee-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.bee-toggle-switch {
-  width: 36px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--border);
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  transition: background 0.2s ease;
-}
-
-.bee-toggle-knob {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform 0.2s ease;
-}
-
-.bee-toggle-switch.running {
-  background: #4caf50;
-}
-
-.bee-toggle-switch.starting {
-  background: #ffcc00;
-}
-
-.bee-toggle-switch.running .bee-toggle-knob {
-  transform: translateX(18px);
-}
-
-/* Node Status Row - shown as first metric row when status message exists */
-.node-status-row {
-  display: none;
-}
-
-.node-status-row.visible {
-  display: flex;
-}
-
-.bee-info {
-  padding: 8px 14px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-  opacity: 0.8;
-}
-
-.bee-info:not(.visible) {
-  display: none;
-}
-
-.bee-info-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.bee-info-label {
-  color: var(--muted);
-}
-
-/* Divider between Swarm and IPFS */
-.nodes-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 8px 14px;
-}
-
-/* IPFS Toggle and Info */
-.ipfs-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-}
-
-.ipfs-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.ipfs-toggle-switch {
-  width: 36px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--border);
-  position: relative;
-  transition: background 0.2s ease;
-  flex-shrink: 0;
-}
-
-.ipfs-toggle-knob {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform 0.2s ease;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-}
-
-.ipfs-toggle-switch.running {
-  background: #4caf50;
-}
-
-.ipfs-toggle-switch.starting {
-  background: #ffcc00;
-}
-
-.ipfs-toggle-switch.running .ipfs-toggle-knob {
-  transform: translateX(18px);
-}
-
-/* Radicle Toggle and Info */
-.radicle-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-}
-
-.radicle-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.radicle-toggle-switch {
-  width: 36px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--border);
-  position: relative;
-  transition: background 0.2s ease;
-  flex-shrink: 0;
-}
-
-.radicle-toggle-knob {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform 0.2s ease;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-}
-
-.radicle-toggle-switch.running {
-  background: #4caf50;
-}
-
-.radicle-toggle-switch.starting {
-  background: #ffcc00;
-}
-
-.radicle-toggle-switch.running .radicle-toggle-knob {
-  transform: translateX(18px);
-}
-
-.radicle-info {
-  padding: 8px 14px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-  opacity: 0.8;
-}
-
-.radicle-info:not(.visible) {
-  display: none;
-}
-
-.radicle-info-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.radicle-info-label {
-  color: var(--muted);
-}
-
-/* Disable hover highlight on toggle menu items */
-.bee-toggle:hover,
-.ipfs-toggle:hover,
-.radicle-toggle:hover {
-  background: transparent;
-}
-
-/* Disabled toggle states for missing binaries */
-.bee-toggle.disabled,
-.ipfs-toggle.disabled,
-.radicle-toggle.disabled {
-  opacity: 0.4;
-  pointer-events: none;
-}
-
-.bee-toggle.disabled .bee-toggle-switch,
-.ipfs-toggle.disabled .ipfs-toggle-switch,
-.radicle-toggle.disabled .radicle-toggle-switch {
-  background: var(--border);
-}
-
-/* External node toggle states (reused existing daemon) */
-.bee-toggle.external .bee-toggle-switch,
-.ipfs-toggle.external .ipfs-toggle-switch {
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-.bee-toggle.external .bee-toggle-switch.running,
-.ipfs-toggle.external .ipfs-toggle-switch.running {
-  background: #4caf50;
-}
-
-/* Radicle external node badge */
-.radicle-external-badge {
-  display: none;
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--border);
-  color: var(--muted);
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  line-height: 1.4;
-  cursor: help;
-}
-
-.radicle-toggle.external .radicle-external-badge {
-  display: inline-block;
-}
-
-.ipfs-info {
-  padding: 8px 14px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-  opacity: 0.8;
-}
-
-.ipfs-info:not(.visible) {
-  display: none;
-}
-
-.ipfs-info-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ipfs-info-label {
-  color: var(--muted);
-}
-
-#ipfs-bandwidth-down,
-#ipfs-bandwidth-up {
-  text-align: right;
+  border-radius: 0;
+  background: #555;
 }
 
 .status-indicator.running {
-  background: #4caf50;
-  box-shadow: 0 0 4px #4caf50;
+  background: #16a34a;
+  box-shadow: none;
 }
 
 .status-indicator.starting {
-  background: #ff9800;
+  background: #f97316;
   animation: pulse 1s infinite;
 }
 
@@ -315,9 +21,218 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.5;
+    opacity: 0.4;
   }
   100% {
     opacity: 1;
   }
+}
+
+/* ── SHARED TOGGLE ROW (Swarm / IPFS / Radicle) ──────────────────── */
+.bee-toggle,
+.ipfs-toggle,
+.radicle-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border-bottom: 1px solid #333;
+  background: transparent;
+  cursor: default;
+}
+
+/* Kill the default hover from toolbar.css .menu-item:hover */
+.bee-toggle:hover,
+.ipfs-toggle:hover,
+.radicle-toggle:hover {
+  background: transparent !important;
+  color: #fff !important;
+}
+
+.bee-toggle-label,
+.ipfs-toggle-label,
+.radicle-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  width: 100%;
+  justify-content: space-between;
+  color: #fff;
+}
+
+/* ── TOGGLE SWITCH — Lisa OS flat style ──────────────────────────── */
+.bee-toggle-switch,
+.ipfs-toggle-switch,
+.radicle-toggle-switch {
+  width: 32px;
+  height: 14px;
+  border-radius: 0;
+  background: #333;
+  border: 2px solid #555;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.bee-toggle-knob,
+.ipfs-toggle-knob,
+.radicle-toggle-knob {
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+  background: #555;
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+/* Running state → orange */
+.bee-toggle-switch.running,
+.ipfs-toggle-switch.running,
+.radicle-toggle-switch.running {
+  background: #f97316;
+  border-color: #f97316;
+}
+
+.bee-toggle-switch.starting,
+.ipfs-toggle-switch.starting,
+.radicle-toggle-switch.starting {
+  background: #444;
+  border-color: #f97316;
+}
+
+.bee-toggle-switch.running .bee-toggle-knob,
+.ipfs-toggle-switch.running .ipfs-toggle-knob,
+.radicle-toggle-switch.running .radicle-toggle-knob {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+.bee-toggle-switch.starting .bee-toggle-knob,
+.ipfs-toggle-switch.starting .ipfs-toggle-knob,
+.radicle-toggle-switch.starting .radicle-toggle-knob {
+  background: #f97316;
+}
+
+/* ── NODE INFO ROWS ──────────────────────────────────────────────── */
+.bee-info,
+.ipfs-info,
+.radicle-info {
+  padding: 6px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-bottom: 1px solid #333;
+}
+
+.bee-info:not(.visible),
+.ipfs-info:not(.visible),
+.radicle-info:not(.visible) {
+  display: none;
+}
+
+.bee-info-row,
+.ipfs-info-row,
+.radicle-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 9px;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+}
+
+.bee-info-label,
+.ipfs-info-label,
+.radicle-info-label {
+  color: #888;
+}
+
+/* Status row */
+.node-status-row {
+  display: none;
+}
+
+.node-status-row.visible {
+  display: flex;
+}
+
+/* ── DIVIDER ─────────────────────────────────────────────────────── */
+.nodes-divider {
+  height: 1px;
+  background: #333;
+  margin: 0;
+}
+
+/* ── DISABLED STATE ──────────────────────────────────────────────── */
+.bee-toggle.disabled,
+.ipfs-toggle.disabled,
+.radicle-toggle.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ── EXTERNAL NODE ───────────────────────────────────────────────── */
+.bee-toggle.external .bee-toggle-switch,
+.ipfs-toggle.external .ipfs-toggle-switch {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.bee-toggle.external .bee-toggle-switch.running,
+.ipfs-toggle.external .ipfs-toggle-switch.running {
+  background: #f97316;
+}
+
+/* ── RADICLE EXTERNAL BADGE ──────────────────────────────────────── */
+.radicle-external-badge {
+  display: none;
+  font-size: 8px;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border: 1px solid #555;
+  background: #333;
+  color: #888;
+  letter-spacing: 0.04em;
+  cursor: help;
+}
+
+.radicle-toggle.external .radicle-external-badge {
+  display: inline-block;
+}
+
+/* ── BANDWIDTH ───────────────────────────────────────────────────── */
+#ipfs-bandwidth-down,
+#ipfs-bandwidth-up {
+  text-align: right;
+  color: #fff;
+}
+
+/* ── NODE ID TRUNCATED ───────────────────────────────────────────── */
+.node-id-truncated {
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  font-size: 8px;
+  cursor: help;
+  color: #aaa;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

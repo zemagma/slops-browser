@@ -2,7 +2,6 @@
   box-sizing: border-box;
 }
 
-/* Utility class for hiding elements */
 .hidden {
   display: none !important;
 }
@@ -11,12 +10,7 @@ body,
 html {
   height: 100%;
   margin: 0;
-  font-family:
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  font-family: 'Silkscreen', 'Courier New', monospace;
   background-color: var(--bg);
   color: var(--text);
 }
@@ -26,15 +20,12 @@ body {
   flex-direction: column;
 }
 
-.hidden {
-  display: none !important;
-}
-
 /* Webview container */
 .webview-container {
   position: relative;
   width: 100%;
   height: 100%;
+  background: #fff;
 }
 
 .webview-container webview {
@@ -55,6 +46,35 @@ body {
   min-height: 0;
 }
 
+.content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  /* Hatch pattern on empty content area */
+  background-image: repeating-linear-gradient(
+    45deg,
+    #000 0px,
+    #000 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  background-size: 4px 4px;
+  background-color: #fff;
+}
+
+#bzz-webview {
+  flex: 1;
+  border: none;
+  background: #fff;
+}
+
+#bzz-webview.hidden {
+  visibility: hidden;
+}
+.bookmarks.hidden {
+  display: none;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -62,24 +82,4 @@ body {
   to {
     transform: rotate(360deg);
   }
-}
-
-.content {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-#bzz-webview {
-  flex: 1;
-  border: none;
-  background: #0f0f0f;
-}
-
-#bzz-webview.hidden {
-  visibility: hidden;
-}
-
-.bookmarks.hidden {
-  display: none;
 }

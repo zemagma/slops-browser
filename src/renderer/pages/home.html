@@ -4,137 +4,412 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self';"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self';"
     />
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --black: #000;
+        --white: #fff;
+        --orange: #f97316;
+        --hatch: repeating-linear-gradient(
+          45deg,
+          #000 0px,
+          #000 1px,
+          transparent 1px,
+          transparent 4px
+        );
+      }
+
       html,
       body {
         height: 100%;
-        margin: 0;
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        padding: 48px;
-        box-sizing: border-box;
-        position: relative;
+        font-family: 'Silkscreen', 'Courier New', monospace;
+        background: var(--white);
+        background-image: repeating-linear-gradient(
+          45deg,
+          #000 0px,
+          #000 1px,
+          transparent 1px,
+          transparent 4px
+        );
+        background-size: 4px 4px;
+        color: var(--black);
+        overflow: auto;
       }
 
-      /* Dark theme (default) */
-      body {
-        background: #1f2020;
-        color: #c7c7c7;
-      }
-      body::before {
-        content: '';
-        position: absolute;
+      /* ── TOP BAR ──────────────────────────────────────────────── */
+      .top-bar {
+        position: sticky;
         top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: url('images/home.png') no-repeat center center;
-        background-size: cover;
-        opacity: 0.6;
-        z-index: -1;
+        z-index: 100;
+        background: var(--white);
+        border-bottom: 2px solid var(--black);
+        padding: 0;
       }
-      h1 {
-        font-size: 32px;
-        margin-bottom: 16px;
+
+      .top-bar-hatch {
+        height: 5px;
+        background-image: var(--hatch);
+        background-size: 4px 4px;
+        border-bottom: 2px solid var(--black);
       }
-      p {
-        max-width: 640px;
-        line-height: 1.6;
-        margin-bottom: 12px;
+
+      .top-bar-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 16px;
+        height: 48px;
       }
-      h2 {
-        font-size: 18px;
-        margin-top: 32px;
-        margin-bottom: 12px;
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .brand-text {
+        font-size: 14px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .brand-text span {
+        color: var(--orange);
+      }
+
+      /* ── STATUS CARD ──────────────────────────────────────────── */
+      .status-card {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 14px;
+        background: var(--white);
+        border: 2px solid var(--black);
+        box-shadow: 2px 2px 0 var(--black);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .status-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+      }
+
+      .status-label {
+        color: #666;
+      }
+      .status-value {
+        color: var(--black);
+        font-weight: bold;
+      }
+
+      .status-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+        flex-wrap: wrap;
+      }
+
+      .status-link {
+        font-size: 10px;
+        font-family: inherit;
+        color: var(--white);
+        background: var(--black);
+        border: 2px solid var(--black);
+        box-shadow: 2px 2px 0 #555;
+        padding: 3px 8px;
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+      }
+
+      .status-link:hover {
+        background: var(--orange);
+        border-color: var(--orange);
+      }
+
+      .muted {
         color: #999;
+        font-size: 10px;
       }
-      code {
-        background: #2a2a2a;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: 'SF Mono', Menlo, monospace;
-        font-size: 13px;
+
+      /* ── DESKTOP AREA ─────────────────────────────────────────── */
+      .desktop {
+        padding: 24px 20px;
+        min-height: calc(100vh - 48px);
       }
-      ul {
-        margin: 0;
-        padding-left: 20px;
+
+      .desktop-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 32px;
+        flex-wrap: wrap;
+      }
+
+      .welcome-block h1 {
+        font-size: 22px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        line-height: 1.2;
+        margin-bottom: 6px;
+      }
+
+      .welcome-block h1 em {
+        color: var(--orange);
+        font-style: normal;
+      }
+
+      .welcome-block p {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #666;
+        max-width: 340px;
         line-height: 1.8;
       }
-      li {
-        margin-bottom: 4px;
-      }
-      a.protocol-link {
-        color: #6eb5ff;
-        text-decoration: none;
-        background: #2a2a2a;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: 'SF Mono', Menlo, monospace;
-        font-size: 13px;
-        cursor: pointer;
-        transition:
-          background 0.15s ease,
-          color 0.15s ease;
-      }
-      a.protocol-link:hover {
-        background: #3a3a4a;
-        color: #8ecfff;
-      }
-      .logo-dark {
-        display: block;
-      }
-      .logo-light {
-        display: none;
+
+      /* ── QUICK LINKS ──────────────────────────────────────────── */
+      .section-title {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: #999;
+        margin-bottom: 10px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #ccc;
       }
 
-      /* Light theme */
-      @media (prefers-color-scheme: light) {
-        body {
-          background: #ffffff;
-          color: #202124;
-        }
-        h2 {
-          color: #5f6368;
-        }
-        code {
-          background: #f1f3f4;
-        }
-        a.protocol-link {
-          color: #1a73e8;
-          background: #f1f3f4;
-        }
-        a.protocol-link:hover {
-          background: #e8eaed;
-          color: #1558b0;
-        }
-        .logo-dark {
-          display: none;
-        }
-        .logo-light {
-          display: block;
-        }
+      .links-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 8px;
+        margin-bottom: 28px;
+      }
+
+      .link-card {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 10px;
+        background: var(--white);
+        border: 2px solid var(--black);
+        box-shadow: 2px 2px 0 var(--black);
+        cursor: pointer;
+        text-decoration: none;
+        color: var(--black);
+        transition:
+          background 0.1s,
+          box-shadow 0.1s;
+      }
+
+      .link-card:hover {
+        background: var(--orange);
+        color: var(--white);
+        box-shadow: 3px 3px 0 var(--black);
+      }
+
+      .link-card:hover .link-proto {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .link-name {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: bold;
+      }
+
+      .link-proto {
+        font-size: 9px;
+        color: #999;
+        letter-spacing: 0.04em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ── PROTOCOL GUIDE ───────────────────────────────────────── */
+      .proto-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 8px;
+        margin-bottom: 28px;
+      }
+
+      .proto-card {
+        padding: 10px 12px;
+        background: var(--white);
+        border: 2px solid var(--black);
+        box-shadow: 2px 2px 0 var(--black);
+      }
+
+      .proto-name {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--orange);
+        margin-bottom: 4px;
+      }
+
+      .proto-desc {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #666;
+        line-height: 1.6;
+      }
+
+      .proto-example {
+        margin-top: 6px;
+        font-size: 9px;
+        color: #999;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        padding: 3px 6px;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
     </style>
   </head>
   <body>
-    <img
-      class="logo-dark"
-      src="images/freedom-logo-white.svg"
-      alt="Freedom"
-      style="height: 48px; margin-bottom: 24px"
-    />
-    <img
-      class="logo-light"
-      src="images/freedom-logo-black.svg"
-      alt="Freedom"
-      style="height: 48px; margin-bottom: 24px"
-    />
-    <p>
-      The decentralized web is here. Powered by built-in nodes, this browser connects you directly
-      to peers, keeping the network strong and user-controlled.
-    </p>
+    <!-- TOP BAR -->
+    <div class="top-bar">
+      <div class="top-bar-hatch"></div>
+      <div class="top-bar-content">
+        <div class="brand">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+          <span class="brand-text">◆ <span>SLOPS</span>.FREE</span>
+        </div>
+
+        <!-- STATUS CARD — IDs kept for home.js, hidden until HNS active -->
+        <div class="status-card" id="hns-status-card" style="display: none">
+          <div class="status-row">
+            <span class="status-label">Dest</span>
+            <span class="status-value" id="home-destination">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">HNS</span>
+            <span class="status-value" id="home-status">Checking</span>
+          </div>
+          <div class="status-row" id="home-height-row" hidden>
+            <span class="status-label">Height</span>
+            <span class="status-value" id="home-height">0</span>
+          </div>
+          <div class="status-actions">
+            <a id="home-open-link" class="status-link" href="https://pirate.sc/">Open</a>
+            <span id="home-note" class="muted">Initialising nodes…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESKTOP -->
+    <div class="desktop">
+      <div class="desktop-header">
+        <div class="welcome-block">
+          <h1>Welcome to<br /><em>free.slops.app</em></h1>
+          <p>
+            A decentralized browser with native Swarm, IPFS, Radicle and ENS support. Type a hash,
+            CID, .eth domain or any URL in the address bar above.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick links -->
+      <div class="section-title">◆ Quick Links</div>
+      <div class="links-grid">
+        <a class="link-card" href="https://slops.app">
+          <span class="link-name">Slops.App</span>
+          <span class="link-proto">https://slops.app</span>
+        </a>
+        <a class="link-card" href="https://opensea.io/collection/digital-slop">
+          <span class="link-name">Digital Slops</span>
+          <span class="link-proto">opensea.io</span>
+        </a>
+        <a
+          class="link-card"
+          href="ipfs://bafybeiemxf5abjwjbikoz4mc3a3dla6ual3jsgpdr4cjr3oz3evfyavhwq/"
+        >
+          <span class="link-name">IPFS Wikipedia</span>
+          <span class="link-proto">ipfs://bafy…</span>
+        </a>
+        <a class="link-card" href="https://app.ens.domains">
+          <span class="link-name">ENS Domains</span>
+          <span class="link-proto">app.ens.domains</span>
+        </a>
+        <a class="link-card" href="https://etherscan.io">
+          <span class="link-name">Etherscan</span>
+          <span class="link-proto">etherscan.io</span>
+        </a>
+        <a class="link-card" href="https://slops.digital">
+          <span class="link-name">Slops Digital</span>
+          <span class="link-proto">slops.digital</span>
+        </a>
+      </div>
+
+      <!-- Protocol guide -->
+      <div class="section-title">◆ Supported Protocols</div>
+      <div class="proto-grid">
+        <div class="proto-card">
+          <div class="proto-name">Swarm</div>
+          <div class="proto-desc">Ethereum-native decentralized storage</div>
+          <div class="proto-example">bzz://a1b2c3…/index.html</div>
+        </div>
+        <div class="proto-card">
+          <div class="proto-name">IPFS</div>
+          <div class="proto-desc">Peer-to-peer hypermedia protocol</div>
+          <div class="proto-example">ipfs://QmHash…</div>
+        </div>
+        <div class="proto-card">
+          <div class="proto-name">IPNS</div>
+          <div class="proto-desc">Mutable IPFS names</div>
+          <div class="proto-example">ipns://k51qz…</div>
+        </div>
+        <div class="proto-card">
+          <div class="proto-name">ENS</div>
+          <div class="proto-desc">Ethereum Name Service domains</div>
+          <div class="proto-example">vitalik.eth</div>
+        </div>
+        <div class="proto-card">
+          <div class="proto-name">Radicle</div>
+          <div class="proto-desc">Decentralized code collaboration</div>
+          <div class="proto-example">rad://z3gqc…</div>
+        </div>
+        <div class="proto-card">
+          <div class="proto-name">HTTP/S</div>
+          <div class="proto-desc">Standard web, always available</div>
+          <div class="proto-example">https://example.com</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="scripts/home.js"></script>
   </body>
 </html>

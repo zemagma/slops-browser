@@ -1,4 +1,4 @@
-/* Update Toast Notification */
+/* ── UPDATE TOAST ────────────────────────────────────────────────── */
 .update-toast {
   position: fixed;
   bottom: 16px;
@@ -13,48 +13,56 @@
 .update-toast-content {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--menu-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  color: var(--text);
-  font-size: 13px;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #000;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0px #555;
+  color: #fff;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .update-toast-btn {
-  background: var(--accent);
-  color: #000;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  background: #f97316;
+  color: #fff;
+  border: 2px solid #fff;
+  padding: 4px 10px;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   cursor: pointer;
-  transition: opacity 0.2s;
+  white-space: nowrap;
 }
 
 .update-toast-btn:hover {
-  opacity: 0.9;
+  opacity: 0.85;
 }
-
 .update-toast-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
 
 .update-toast-close {
   background: transparent;
-  border: none;
-  color: var(--muted);
-  font-size: 18px;
+  border: 1px solid #555;
+  color: #fff;
+  font-size: 14px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
-  transition: color 0.2s;
+  font-family: 'Silkscreen', 'Courier New', monospace;
 }
 
 .update-toast-close:hover {
-  color: var(--text);
+  border-color: #fff;
+  background: #222;
 }

@@ -1,42 +1,53 @@
+/* ── TOOLBAR ─────────────────────────────────────────────────────── */
 .toolbar {
   display: grid;
   grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: 0;
-  padding: 6px 10px;
+  padding: 0 8px;
   background-color: var(--toolbar);
-  border-bottom: none;
-  min-height: 48px;
+  border-bottom: 2px solid #000;
+  min-height: 52px;
   user-select: none;
+  position: relative;
 }
 
+/* Hatch separator below toolbar */
+.toolbar::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background-image: var(--hatch);
+  background-size: var(--hatch-size);
+  border-bottom: 2px solid #000;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── NAV BUTTONS ─────────────────────────────────────────────────── */
 .nav-buttons {
-  gap: 0;
   display: flex;
   align-items: center;
-}
-
-#nav-form {
-  gap: 6px;
+  gap: 2px;
+  padding-right: 6px;
+  border-right: 2px solid #000;
+  margin-right: 6px;
+  height: 36px;
 }
 
 .icon-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font-family:
-    'SF Pro Display',
-    'SF Pro Icons',
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 18px;
-  font-weight: 500;
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+  border: 2px solid #000;
+  box-shadow: var(--shadow);
+  background: #fff;
+  color: #000;
+  font-family: var(--font-pixel);
+  font-size: 11px;
   cursor: default;
   display: inline-flex;
   align-items: center;
@@ -44,53 +55,59 @@
   position: relative;
   overflow: hidden;
   line-height: 1;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.1s ease;
   margin: 0 1px;
 }
 
-.icon-btn[data-state='stop'] .icon-reload {
-  display: none;
-}
-
-.icon-btn[data-state='stop'] .icon-stop {
-  display: block;
-}
-
-.icon-btn[data-state='reload'] .icon-stop {
-  display: none;
-}
-
-.icon-btn[data-state='reload'] .icon-reload {
-  display: block;
-}
 .icon-btn svg,
 .menu-button svg {
-  width: 15px;
-  height: 15px;
-  pointer-events: none;
-}
-
-.bookmark svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   pointer-events: none;
 }
 
 .icon-btn:disabled {
   opacity: 0.3;
   cursor: default;
+  box-shadow: none;
 }
 
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+.icon-btn:not(:disabled):hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: #000;
 }
 
+.icon-btn:not(:disabled):active {
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+/* stop/reload icon toggle */
+.icon-btn[data-state='stop'] .icon-reload {
+  display: none;
+}
+.icon-btn[data-state='stop'] .icon-stop {
+  display: block;
+}
+.icon-btn[data-state='reload'] .icon-stop {
+  display: none;
+}
+.icon-btn[data-state='reload'] .icon-reload {
+  display: block;
+}
+
+/* ── ADDRESS BAR ─────────────────────────────────────────────────── */
 #nav-form {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: 6px;
-  margin-right: 6px;
+  gap: 0;
+  margin: 0 6px;
+}
+
+.address-bar-container {
+  position: relative;
+  flex: 1;
 }
 
 .address-wrapper {
@@ -98,10 +115,39 @@
   flex: 1;
 }
 
-/* Protocol icon in address bar */
+.address-input {
+  width: 100%;
+  height: 34px;
+  border-radius: 0;
+  border: 2px solid #000;
+  box-shadow: var(--shadow);
+  background: #fff;
+  color: #000;
+  padding: 4px 36px 4px 36px;
+  font-size: 11px;
+  font-family: var(--font-pixel);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  outline: none;
+  transition: box-shadow 0.1s ease;
+}
+
+.address-input:focus {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--accent);
+}
+
+.address-input::placeholder {
+  color: #999;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+/* ── PROTOCOL ICON ───────────────────────────────────────────────── */
 .protocol-icon {
   position: absolute;
-  left: 10px;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
   width: 18px;
@@ -112,12 +158,12 @@
   z-index: 2;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
 }
 
 .protocol-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   display: none;
 }
 
@@ -125,83 +171,637 @@
   opacity: 1;
 }
 
-/* Swarm - orange */
 .protocol-icon[data-protocol='swarm'] .icon-swarm {
   display: block;
-  fill: #f7931a;
+  fill: var(--accent);
 }
-
-/* IPFS - uses official colors from SVG */
-.protocol-icon[data-protocol='ipfs'] .icon-ipfs,
+.protocol-icon[data-protocol='ipfs'] .icon-ipfs {
+  display: block;
+}
 .protocol-icon[data-protocol='ipns'] .icon-ipfs {
   display: block;
 }
-
-/* Radicle - purple/violet (matches Radicle branding) */
 .protocol-icon[data-protocol='radicle'] .icon-radicle {
   display: block;
-  stroke: #9b59b6;
+  stroke: #7c3aed;
 }
-
-/* HTTP - muted */
 .protocol-icon[data-protocol='http'] .icon-http {
   display: block;
   stroke: var(--muted);
 }
-
-/* HTTPS secure - subtle green */
 .protocol-icon[data-protocol='https'] .icon-http {
   display: block;
-  stroke: #6b9e7a;
+  stroke: #16a34a;
 }
 
-.address-input {
-  width: 100%;
-  height: 36px;
-  border-radius: 18px;
-  border: 1px solid transparent;
-  background: #282828;
-  color: var(--text);
-  padding: 6px 38px 6px 16px;
-  font-size: 14px;
-  transition: padding-left 0.2s ease;
-}
-
-/* Shift input text when icon is visible */
 .address-wrapper:has(.protocol-icon.visible) .address-input {
   padding-left: 34px;
 }
 
+/* ── INPUT ACTION BUTTONS (bookmark, radicle seed) ───────────────── */
 .input-action-btn {
   position: absolute;
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   margin: 0;
   padding: 0;
+  border: none;
+  background: transparent;
   color: var(--muted);
-  transition:
-    color 0.2s ease,
-    background-color 0.2s ease;
   z-index: 2;
 }
 
+.icon-btn.input-action-btn {
+  border: none;
+  box-shadow: none;
+  width: 22px;
+  height: 22px;
+}
+
 .icon-btn.input-action-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .input-action-btn:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--accent);
+  background: transparent;
 }
 
 .input-action-btn.bookmarked svg {
-  fill: currentColor;
+  fill: var(--accent);
+  stroke: var(--accent);
 }
-
 .input-action-btn.hidden {
   display: none;
+}
+
+/* ── NODES MENU BUTTON ───────────────────────────────────────────── */
+.bee-menu-button,
+.menu-button,
+.wallet-toggle-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+  border: 2px solid #000;
+  box-shadow: var(--shadow);
+  background: #fff;
+  color: #000;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 2px;
+  transition: background 0.1s ease;
+}
+
+.bee-menu-button svg .net-line,
+.bee-menu-button svg .net-node {
+  stroke: #000 !important;
+}
+
+.bee-menu-button:hover,
+.menu-button:hover,
+.wallet-toggle-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.bee-menu-button:hover svg .net-line,
+.bee-menu-button:hover svg .net-node {
+  stroke: #fff !important;
+}
+
+.bee-menu-button:active,
+.menu-button:active,
+.wallet-toggle-btn:active {
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+/* ── BEE / NODES DROPDOWN ────────────────────────────────────────── */
+.bee-dropdown,
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #000;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0px #555;
+  min-width: 220px;
+  z-index: 1000;
+  color: #fff;
+  font-family: var(--font-pixel);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #333;
+  color: #fff;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: default;
+  text-align: left;
+}
+
+.menu-item:hover {
+  background: #fff;
+  color: #000;
+}
+
+.menu-item-label {
+  flex: 1;
+}
+.menu-item-shortcut {
+  font-size: 9px;
+  color: #666;
+  margin-left: 12px;
+}
+
+.menu-item:hover .menu-item-shortcut {
+  color: #999;
+}
+
+.menu-divider {
+  height: 1px;
+  background: #333;
+}
+
+/* Zoom row */
+.menu-zoom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  border-bottom: 1px solid #333;
+}
+
+.menu-zoom-label {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.menu-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom-btn {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #555;
+  background: transparent;
+  color: #fff;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+.zoom-btn:hover {
+  border-color: #fff;
+  background: #333;
+}
+
+.zoom-level {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: #fff;
+  min-width: 36px;
+  text-align: center;
+}
+
+/* Bee info rows */
+.bee-info,
+.ipfs-info,
+.radicle-info {
+  padding: 6px 14px 10px;
+  border-bottom: 1px solid #333;
+}
+
+.bee-info-row,
+.ipfs-info-row,
+.radicle-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bee-info-label,
+.ipfs-info-label,
+.radicle-info-label {
+  color: #666;
+}
+
+/* Toggle switches inside dropdown */
+.bee-toggle-switch,
+.ipfs-toggle-switch,
+.radicle-toggle-switch {
+  display: inline-block;
+  width: 28px;
+  height: 14px;
+  border: 2px solid #555;
+  position: relative;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.bee-toggle-knob,
+.ipfs-toggle-knob,
+.radicle-toggle-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  background: #555;
+  transition:
+    left 0.15s ease,
+    background 0.15s ease;
+}
+
+.bee-toggle.on .bee-toggle-knob,
+.ipfs-toggle.on .ipfs-toggle-knob,
+.radicle-toggle.on .radicle-toggle-knob {
+  left: 13px;
+  background: var(--accent);
+}
+
+.nodes-divider {
+  height: 1px;
+  background: #333;
+  margin: 4px 0;
+}
+
+/* GitHub bridge panel */
+.github-bridge-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #000;
+  border: 2px solid #000;
+  box-shadow: var(--shadow-lg);
+  padding: 10px;
+  z-index: 200;
+  font-family: var(--font-pixel);
+  color: #fff;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.github-bridge-panel.hidden {
+  display: none;
+}
+
+.ghb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #333;
+}
+
+.ghb-title {
+  font-size: 10px;
+  color: #fff;
+}
+.ghb-state.hidden {
+  display: none;
+}
+.ghb-import-btn {
+  background: var(--accent);
+  border: 2px solid #000;
+  color: #fff;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: default;
+  box-shadow: var(--shadow);
+  margin-top: 6px;
+  width: 100%;
+}
+
+.ghb-import-btn:hover {
+  opacity: 0.85;
+}
+
+/* Autocomplete */
+.autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: var(--shadow-lg);
+  z-index: 300;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.autocomplete-dropdown.hidden {
+  display: none;
+}
+
+.autocomplete-item {
+  padding: 6px 10px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: default;
+  border-bottom: 1px solid #eee;
+  color: #000;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── BOOKMARKS BAR ───────────────────────────────────────────────── */
+.bookmarks {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #fff;
+  border-bottom: 2px solid #000;
+  min-height: 32px;
+  overflow: hidden;
+  margin-top: 5px; /* accounts for toolbar::after hatch */
+}
+
+.bookmark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 2px solid #000;
+  box-shadow: var(--shadow);
+  background: #fff;
+  color: #000;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: default;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.bookmark:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.bookmark svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* ── BUTTON HOVER ICON FIX ───────────────────────────────────────── */
+/* Force SVG strokes white on hover so icons don't disappear */
+.icon-btn:not(:disabled):hover svg,
+.bee-menu-button:hover svg,
+.menu-button:hover svg,
+.wallet-toggle-btn:hover svg {
+  stroke: #fff;
+}
+
+.icon-btn:not(:disabled):hover svg path,
+.icon-btn:not(:disabled):hover svg line,
+.icon-btn:not(:disabled):hover svg circle,
+.icon-btn:not(:disabled):hover svg polyline,
+.icon-btn:not(:disabled):hover svg rect,
+.icon-btn:not(:disabled):hover svg polygon {
+  stroke: #fff;
+}
+
+/* Reload/stop icons specifically */
+.icon-btn:not(:disabled):hover .icon-reload,
+.icon-btn:not(:disabled):hover .icon-stop {
+  stroke: #fff;
+}
+
+/* ── EXPLICIT MENU DROPDOWN OVERRIDES ───────────────────────────── */
+/* Ensure #menu-dropdown always has black bg regardless of state */
+#menu-dropdown,
+#bee-menu-dropdown {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+#menu-dropdown .menu-item,
+#bee-menu-dropdown .menu-item {
+  color: #fff !important;
+  background: transparent;
+}
+
+#menu-dropdown .menu-item:hover,
+#bee-menu-dropdown .menu-item:hover {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+#menu-dropdown .menu-item-label,
+#bee-menu-dropdown .menu-item-label {
+  color: inherit !important;
+}
+
+#menu-dropdown .menu-item-shortcut {
+  color: #666 !important;
+}
+
+#menu-dropdown .menu-item:hover .menu-item-shortcut {
+  color: #999 !important;
+}
+
+/* ── DARK MODE TOOLBAR OVERRIDES ─────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .toolbar {
+    background: #fff !important;
+    border-bottom-color: #000 !important;
+  }
+  .icon-btn {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+  .icon-btn:not(:disabled):hover {
+    background: #f97316 !important;
+  }
+  .bee-menu-button,
+  .menu-button,
+  .wallet-toggle-btn {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+  .bee-menu-button:hover,
+  .menu-button:hover,
+  .wallet-toggle-btn:hover {
+    background: #f97316 !important;
+  }
+  .address-input {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+  .bookmarks {
+    background: #fff !important;
+    border-bottom-color: #000 !important;
+  }
+  .bookmark {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+  .bookmark:hover {
+    background: #f97316 !important;
+    color: #fff !important;
+  }
+}
+
+/* ── BOOKMARKS EXPLICIT COLORS (fix for both themes) ────────────── */
+.bookmarks {
+  background: #fff;
+  border-bottom: 2px solid #000;
+}
+
+.bookmark {
+  color: #000;
+  background: #fff;
+  text-decoration: none;
+  font-size: 9px;
+}
+
+.bookmark-label {
+  color: #000;
+}
+
+.bookmark:hover .bookmark-label,
+.bookmark:hover {
+  color: #fff !important;
+  background: #f97316 !important;
+}
+
+/* ── BUTTON HOVER — ensure icons always white on colored bg ──────── */
+.icon-btn:not(:disabled):hover *,
+.bee-menu-button:hover *,
+.menu-button:hover *,
+.wallet-toggle-btn:hover * {
+  stroke: #fff !important;
+  color: #fff !important;
+}
+
+/* Bee SVG specific lines */
+.bee-menu-button:hover .net-line {
+  stroke: #fff !important;
+}
+.bee-menu-button:hover .net-node {
+  stroke: #fff !important;
+}
+
+/* ── SETTINGS SELECT FIX ─────────────────────────────────────────── */
+.settings-select,
+select {
+  color: #000 !important;
+  background: #fff !important;
+  color-scheme: light !important;
+  -webkit-appearance: auto;
+}
+
+/* ── BOOKMARKS BAR HEIGHT FIX ────────────────────────────────────── */
+.bookmarks {
+  min-height: 36px !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding: 4px 10px !important;
+  align-items: center !important;
+}
+
+.bookmark {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── ZOOM ROW FIX — white text/controls ──────────────────────────── */
+.menu-zoom-row {
+  background: #000;
+  padding: 8px 14px;
+  border-bottom: 1px solid #333;
+}
+
+.menu-zoom-label {
+  color: #fff !important;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.zoom-level {
+  color: #fff !important;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  font-size: 10px;
+  min-width: 40px;
+  text-align: center;
+}
+
+.zoom-btn {
+  border: 2px solid #555 !important;
+  background: transparent !important;
+  color: #fff !important;
+  font-size: 16px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  font-family: monospace;
+}
+
+.zoom-btn:hover {
+  border-color: #fff !important;
+  background: #333 !important;
+  color: #fff !important;
+}
+
+/* Fullscreen button icon */
+.fullscreen-btn svg {
+  stroke: #fff !important;
+}
+
+.fullscreen-btn:hover svg {
+  stroke: #fff !important;
 }

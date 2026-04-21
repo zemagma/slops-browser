@@ -1,26 +1,65 @@
 :root {
-  color-scheme: dark;
-  --bg: #1f2020;
-  --toolbar: #3c3c3c;
-  --border: #4a4a4a;
-  --text: #c7c7c7;
-  --accent: #8ab4f8;
-  --muted: #c7c7c7;
-  --modal-bg: #1a1a1a;
-  --menu-bg: #1a1a1a;
-  --danger: #f28b82;
+  color-scheme: light;
+  --bg: #ffffff;
+  --toolbar: #ffffff;
+  --border: #000000;
+  --text: #000000;
+  --accent: #f97316;
+  --muted: #666666;
+  --modal-bg: #ffffff;
+  --menu-bg: #000000;
+  --danger: #dc2626;
+
+  /* Lisa OS extras */
+  --hatch: repeating-linear-gradient(45deg, #000 0px, #000 1px, transparent 1px, transparent 4px);
+  --hatch-size: 4px 4px;
+  --shadow: 2px 2px 0px #000;
+  --shadow-lg: 4px 4px 0px #000;
+  --font-pixel: 'Silkscreen', 'Courier New', monospace;
 }
 
-/* Light theme */
+/* Force light theme always — Lisa OS is white */
+[data-theme='dark'],
 [data-theme='light'] {
   color-scheme: light;
-  --bg: #dfe1e5;
+  --bg: #ffffff;
   --toolbar: #ffffff;
-  --border: #dfe1e5;
-  --text: #202124;
-  --accent: #1a73e8;
-  --muted: #5f6368;
+  --border: #000000;
+  --text: #000000;
+  --accent: #f97316;
+  --muted: #666666;
   --modal-bg: #ffffff;
-  --menu-bg: #ffffff;
-  --danger: #d93025;
+  --menu-bg: #000000;
+  --danger: #dc2626;
+}
+
+/* ── NUCLEAR DARK MODE OVERRIDE ─────────────────────────────────── */
+/* Force light theme on ALL elements regardless of OS preference */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: light !important;
+    --bg: #ffffff !important;
+    --toolbar: #ffffff !important;
+    --border: #000000 !important;
+    --text: #000000 !important;
+    --accent: #f97316 !important;
+    --muted: #666666 !important;
+    --modal-bg: #ffffff !important;
+    --menu-bg: #000000 !important;
+  }
+
+  body,
+  html {
+    background-color: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+
+  /* Force all inputs/selects to render light */
+  input,
+  select,
+  textarea,
+  button {
+    color-scheme: light;
+  }
 }
