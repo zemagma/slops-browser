@@ -692,7 +692,7 @@
 /* ── BOOKMARKS EXPLICIT COLORS (fix for both themes) ────────────── */
 .bookmarks {
   background: #fff;
-  border-bottom: 2px solid #000;
+  border-bottom: 4px solid #000;
 }
 
 .bookmark {
@@ -740,15 +740,15 @@ select {
 
 /* ── BOOKMARKS BAR HEIGHT FIX ────────────────────────────────────── */
 .bookmarks {
-  min-height: 36px !important;
+  min-height: 40px !important;
   height: auto !important;
   overflow: visible !important;
-  padding: 4px 10px !important;
+  padding: 1px 1px !important;
   align-items: center !important;
 }
 
 .bookmark {
-  height: 26px;
+  height: 20px;
   display: flex;
   align-items: center;
   white-space: nowrap;
